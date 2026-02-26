@@ -1,66 +1,41 @@
-## Foundry
+# contracts/
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+Smart contracts for Prophet's on-chain settlement system. Built with Foundry and OpenZeppelin v5.
 
-Foundry consists of:
+## Directory Structure
 
-- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
-- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
-- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
-- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
-
-## Documentation
-
-https://book.getfoundry.sh/
-
-## Usage
-
-### Build
-
-```shell
-$ forge build
+```
+contracts/
+├── src/              # Contract source files
+│   └── TestUSDC.sol  # Testnet USDC (ERC-20, 6 decimals, faucet)
+├── test/             # Foundry test files
+│   └── TestUSDC.t.sol
+├── script/           # Deployment scripts
+├── lib/              # Dependencies (forge-std, openzeppelin-contracts)
+└── foundry.toml      # Foundry configuration
 ```
 
-### Test
+## Contracts
+
+| Contract | Description | Network |
+|----------|-------------|---------|
+| TestUSDC | ERC-20 with 6 decimals, public faucet (100k cap, 24h cooldown), owner-only mint. Reverts on mainnet (chain 137). | Testnet only |
+
+## Commands
 
 ```shell
-$ forge test
+forge build       # Compile contracts
+forge test        # Run tests
+forge test -vv    # Run tests with verbose output
+forge fmt         # Format Solidity files
+forge fmt --check # Check formatting without modifying
 ```
 
-### Format
+## Dependencies
 
-```shell
-$ forge fmt
-```
+- [OpenZeppelin Contracts v5.6.0](https://github.com/OpenZeppelin/openzeppelin-contracts) — ERC20, Ownable
+- [forge-std](https://github.com/foundry-rs/forge-std) — Foundry testing library
 
-### Gas Snapshots
+## Last Updated
 
-```shell
-$ forge snapshot
-```
-
-### Anvil
-
-```shell
-$ anvil
-```
-
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+2026-02-25
