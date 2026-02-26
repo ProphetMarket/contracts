@@ -2,6 +2,12 @@
 src = "src"
 out = "out"
 libs = ["lib"]
+via_ir = true
 remappings = [
     "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+    # CTF Exchange (Polymarket) and its transitive deps
+    "openzeppelin-contracts/=lib/ctf-exchange/lib/openzeppelin-contracts/contracts/",
+    "common/=lib/ctf-exchange/src/common/",
+    "exchange/=lib/ctf-exchange/src/exchange/",
+    "solady/=lib/ctf-exchange/lib/solady/src/",
 ]
