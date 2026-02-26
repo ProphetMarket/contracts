@@ -21,6 +21,8 @@ The system has three contracts: `ProphetCTFExchange` is a pragma-compatible wrap
 | `test/Resolution.t.sol` | Foundry unit and fuzz test suite for `Resolution` |
 | `test/TestUSDC.t.sol` | Foundry unit and fuzz test suite for `TestUSDC` |
 | `test/mocks/MockConditionalTokens.sol` | ERC1155 mock of Gnosis CTF with real ID computation for testing the exchange |
+| `test/Deploy.t.sol` | 15 tests: fresh deployment, mainnet guard, idempotency, operator/admin configuration, exchange initialization |
+| `script/Deploy.s.sol` | Foundry deployment script — deploys all four contracts with idempotency and optional operator/admin configuration |
 | `foundry.toml` | Foundry build configuration with `via_ir`, remappings for OZ v5 and CTF Exchange dependencies |
 
 ## Diagrams

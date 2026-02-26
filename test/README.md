@@ -15,6 +15,7 @@ Foundry tests covering deployment, order matching, token operations, access cont
 | CTFExchange.t.sol | 21 tests: deployment config, fillOrder (buy/sell/partial), matchOrders (complementary/mint/merge), access control, expiration, pause, cancel, signature types |
 | TestUSDC.t.sol | 21 tests: mint, faucet (limits + cooldown), mainnet guard, ERC-20 transfers, fuzz |
 | Resolution.t.sol | 29 tests: oracle payouts, payout validation, role transfer, authorization, fuzz |
+| Deploy.t.sol | 15 tests: fresh deployment, mainnet guard, idempotency (skip pre-deployed contracts), operator/admin configuration, exchange initialization |
 | mocks/ | Mock contracts for testing (see mocks/README.md) |
 
 ## Running Tests
