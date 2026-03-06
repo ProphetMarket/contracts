@@ -33,7 +33,7 @@ Thin wrapper around the Polymarket CTF Exchange mixins (MIT license). The origin
 Key functions:
 - `fillOrder(Order, fillAmount)` — Operator fills a single signed order
 - `matchOrders(takerOrder, makerOrders[], takerFillAmount, makerFillAmounts[])` — Operator matches orders
-- `registerToken(token, complement, conditionId)` — Admin registers a trading pair
+- `registerToken(token, complement, conditionId)` — Admin or operator registers a trading pair
 
 Match types:
 - **COMPLEMENTARY** (BUY vs SELL) — Direct token swap

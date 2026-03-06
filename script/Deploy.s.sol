@@ -133,12 +133,7 @@ contract Deploy is Script {
             return existing;
         }
 
-        ProphetCTFExchange exchange = new ProphetCTFExchange(
-            usdc,
-            ctf,
-            SAFE_PROXY_FACTORY,
-            SAFE_L2_SINGLETON
-        );
+        ProphetCTFExchange exchange = new ProphetCTFExchange(usdc, ctf, SAFE_PROXY_FACTORY, SAFE_L2_SINGLETON);
         console.log("[DEPLOYED] ProphetCTFExchange at", address(exchange));
         return address(exchange);
     }

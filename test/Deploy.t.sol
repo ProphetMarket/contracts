@@ -110,10 +110,7 @@ contract DeployTest is Test {
         TestUSDC usdc = new TestUSDC(deployer);
         MockConditionalTokens ctf = new MockConditionalTokens();
         ProphetCTFExchange preExchange = new ProphetCTFExchange(
-            address(usdc),
-            address(ctf),
-            deployScript.SAFE_PROXY_FACTORY(),
-            deployScript.SAFE_L2_SINGLETON()
+            address(usdc), address(ctf), deployScript.SAFE_PROXY_FACTORY(), deployScript.SAFE_L2_SINGLETON()
         );
         vm.stopPrank();
 
@@ -132,10 +129,7 @@ contract DeployTest is Test {
         MockConditionalTokens ctf = new MockConditionalTokens();
         Resolution res = new Resolution(deployer, deployer);
         ProphetCTFExchange exchange = new ProphetCTFExchange(
-            address(usdc),
-            address(ctf),
-            deployScript.SAFE_PROXY_FACTORY(),
-            deployScript.SAFE_L2_SINGLETON()
+            address(usdc), address(ctf), deployScript.SAFE_PROXY_FACTORY(), deployScript.SAFE_L2_SINGLETON()
         );
         vm.stopPrank();
 

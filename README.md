@@ -17,7 +17,7 @@ The system has three contracts: `ProphetCTFExchange` is a pragma-compatible wrap
 | `src/ProphetCTFExchange.sol` | Pragma-compatible wrapper around Polymarket CTF Exchange mixins; handles order matching, trading, and asset management |
 | `src/Resolution.sol` | AI oracle that stores immutable binary payout reports per `conditionId` for Prophet prediction markets |
 | `src/TestUSDC.sol` | Testnet-only ERC-20 mimicking USDC with 6 decimals, a public faucet, and owner-only mint |
-| `test/CTFExchange.t.sol` | 21 tests: deployment, fillOrder (buy/sell/partial), matchOrders (complementary/mint/merge), access control, expiration, pause, cancel, signature types |
+| `test/CTFExchange.t.sol` | 27 tests: deployment, fillOrder (buy/sell/partial), matchOrders (complementary/mint/merge), access control (registerToken dual-role, admin-only functions), expiration, pause, cancel, signature types |
 | `test/Resolution.t.sol` | Foundry unit and fuzz test suite for `Resolution` |
 | `test/TestUSDC.t.sol` | Foundry unit and fuzz test suite for `TestUSDC` |
 | `test/mocks/MockConditionalTokens.sol` | ERC1155 mock of Gnosis CTF with real ID computation for testing the exchange |
@@ -188,7 +188,7 @@ Thin wrapper around the Polymarket CTF Exchange mixins (MIT). The original `CTFE
 | `fillOrder(Order, fillAmount)` | `onlyOperator` | Fills a single signed order up to `fillAmount` |
 | `fillOrders(Order[], fillAmounts[])` | `onlyOperator` | Batch fills multiple signed orders |
 | `matchOrders(takerOrder, makerOrders[], takerFillAmount, makerFillAmounts[])` | `onlyOperator` | Matches a taker order against one or more maker orders |
-| `registerToken(tokenId, complement, conditionId)` | `onlyAdmin` | Registers a YES/NO trading pair |
+| `registerToken(tokenId, complement, conditionId)` | `onlyAdmin` or `onlyOperator` | Registers a YES/NO trading pair |
 | `pauseTrading()` | `onlyAdmin` | Pauses all trading operations |
 | `unpauseTrading()` | `onlyAdmin` | Resumes trading |
 

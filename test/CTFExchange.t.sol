@@ -332,6 +332,72 @@ contract CTFExchangeTest is Test {
         exchange.matchOrders(takerOrder, makerOrders, 60 * ONE_USDC, makerFillAmounts);
     }
 
+    // ── registerToken access control ──────────────────────────────
+
+    function test_RegisterToken_OperatorCanCall() public {
+        // Create a second condition so we have new token IDs to register
+        bytes32 questionId2 = keccak256("Will BTC reach $200k in 2026?");
+        address oracle = admin;
+        ctf.prepareCondition(oracle, questionId2, 2);
+        bytes32 conditionId2 = ctf.getConditionId(oracle, questionId2, 2);
+
+        bytes32 yesCollectionId2 = ctf.getCollectionId(bytes32(0), conditionId2, 1);
+        bytes32 noCollectionId2 = ctf.getCollectionId(bytes32(0), conditionId2, 2);
+        uint256 yesTokenId2 = ctf.getPositionId(IERC20(address(usdc)), yesCollectionId2);
+        uint256 noTokenId2 = ctf.getPositionId(IERC20(address(usdc)), noCollectionId2);
+
+        // Operator (not admin) registers the token pair
+        vm.prank(operator);
+        exchange.registerToken(yesTokenId2, noTokenId2, conditionId2);
+
+        assertEq(exchange.getConditionId(yesTokenId2), conditionId2);
+        assertEq(exchange.getComplement(yesTokenId2), noTokenId2);
+        assertEq(exchange.getComplement(noTokenId2), yesTokenId2);
+    }
+
+    function test_RegisterToken_AdminCanCall() public {
+        // Admin registers a new token pair (existing behavior)
+        bytes32 questionId2 = keccak256("Will SOL reach $1k in 2026?");
+        address oracle = admin;
+        ctf.prepareCondition(oracle, questionId2, 2);
+        bytes32 conditionId2 = ctf.getConditionId(oracle, questionId2, 2);
+
+        bytes32 yesCollectionId2 = ctf.getCollectionId(bytes32(0), conditionId2, 1);
+        bytes32 noCollectionId2 = ctf.getCollectionId(bytes32(0), conditionId2, 2);
+        uint256 yesTokenId2 = ctf.getPositionId(IERC20(address(usdc)), yesCollectionId2);
+        uint256 noTokenId2 = ctf.getPositionId(IERC20(address(usdc)), noCollectionId2);
+
+        vm.prank(admin);
+        exchange.registerToken(yesTokenId2, noTokenId2, conditionId2);
+
+        assertEq(exchange.getConditionId(yesTokenId2), conditionId2);
+        assertEq(exchange.getComplement(yesTokenId2), noTokenId2);
+    }
+
+    function test_RegisterToken_RevertsForNonAdminNonOperator() public {
+        vm.prank(address(0xBEEF));
+        vm.expectRevert(ProphetCTFExchange.NotAdminOrOperator.selector);
+        exchange.registerToken(123, 456, bytes32(uint256(789)));
+    }
+
+    function test_AddOperator_RevertsForOperator() public {
+        vm.prank(operator);
+        vm.expectRevert(IAuthEE.NotAdmin.selector);
+        exchange.addOperator(address(0xCAFE));
+    }
+
+    function test_RemoveOperator_RevertsForOperator() public {
+        vm.prank(operator);
+        vm.expectRevert(IAuthEE.NotAdmin.selector);
+        exchange.removeOperator(operator);
+    }
+
+    function test_PauseTrading_RevertsForOperator() public {
+        vm.prank(operator);
+        vm.expectRevert(IAuthEE.NotAdmin.selector);
+        exchange.pauseTrading();
+    }
+
     // ── Order expiration ──────────────────────────────────────────
 
     function test_FillOrder_RevertsOnExpiredOrder() public {

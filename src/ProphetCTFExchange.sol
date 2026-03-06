@@ -33,6 +33,8 @@ contract ProphetCTFExchange is
     Signatures,
     Trading
 {
+    error NotAdminOrOperator();
+
     constructor(address _collateral, address _ctf, address _proxyFactory, address _safeFactory)
         Assets(_collateral, _ctf)
         Signatures(_proxyFactory, _safeFactory)
@@ -82,7 +84,8 @@ contract ProphetCTFExchange is
         _setSafeFactory(_newSafeFactory);
     }
 
-    function registerToken(uint256 token, uint256 complement, bytes32 conditionId) external onlyAdmin {
+    function registerToken(uint256 token, uint256 complement, bytes32 conditionId) external {
+        if (admins[msg.sender] != 1 && operators[msg.sender] != 1) revert NotAdminOrOperator();
         _registerToken(token, complement, conditionId);
     }
 }
