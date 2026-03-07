@@ -16,9 +16,12 @@ contract Resolution is Ownable {
     /// @notice Whether a conditionId has been reported.
     mapping(bytes32 conditionId => bool) private _reported;
 
+    /// @notice IPFS CID of the resolution reasoning per conditionId.
+    mapping(bytes32 conditionId => string ipfsCid) private _ipfsCids;
+
     // ── Events ───────────────────────────────────────────────────────
 
-    event PayoutsReported(bytes32 indexed conditionId, uint256[] payouts);
+    event PayoutsReported(bytes32 indexed conditionId, uint256[] payouts, string ipfsCid);
     event OracleTransferred(address indexed previousOracle, address indexed newOracle);
 
     // ── Errors ───────────────────────────────────────────────────────
@@ -33,8 +36,12 @@ contract Resolution is Ownable {
     // ── Modifiers ────────────────────────────────────────────────────
 
     modifier onlyOracle() {
-        if (msg.sender != oracle) revert Unauthorized();
+        _checkOracle();
         _;
+    }
+
+    function _checkOracle() private view {
+        if (msg.sender != oracle) revert Unauthorized();
     }
 
     // ── Constructor ──────────────────────────────────────────────────
@@ -52,15 +59,20 @@ contract Resolution is Ownable {
     /// @notice Record payouts for a conditionId. Callable only by the oracle.
     /// @param conditionId The condition identifier (from CTF prepareCondition).
     /// @param payouts Array of exactly 2 values, each 0 or 1, with exactly one winner.
-    function reportPayouts(bytes32 conditionId, uint256[] calldata payouts) external onlyOracle {
+    /// @param ipfsCid IPFS content identifier for resolution reasoning (may be empty).
+    function reportPayouts(bytes32 conditionId, uint256[] calldata payouts, string calldata ipfsCid)
+        external
+        onlyOracle
+    {
         if (_reported[conditionId]) revert AlreadyReported(conditionId);
         if (payouts.length != 2) revert InvalidPayoutsLength(payouts.length);
         if (!_validPayouts(payouts[0], payouts[1])) revert InvalidPayoutValues();
 
         _reported[conditionId] = true;
         _payouts[conditionId] = payouts;
+        _ipfsCids[conditionId] = ipfsCid;
 
-        emit PayoutsReported(conditionId, payouts);
+        emit PayoutsReported(conditionId, payouts, ipfsCid);
     }
 
     // ── Admin functions ──────────────────────────────────────────────
@@ -93,6 +105,13 @@ contract Resolution is Ownable {
     /// @return True if reported.
     function isReported(bytes32 conditionId) external view returns (bool) {
         return _reported[conditionId];
+    }
+
+    /// @notice Get the IPFS CID of the resolution reasoning for a conditionId.
+    /// @param conditionId The condition identifier.
+    /// @return The IPFS CID (empty string if not set or not reported).
+    function getIpfsCid(bytes32 conditionId) external view returns (string memory) {
+        return _ipfsCids[conditionId];
     }
 
     // ── Internal ─────────────────────────────────────────────────────

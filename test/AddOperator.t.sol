@@ -4,8 +4,6 @@ pragma solidity ^0.8.20;
 import {Test} from "forge-std/Test.sol";
 import {AddOperator} from "../script/AddOperator.s.sol";
 import {ProphetCTFExchange} from "../src/ProphetCTFExchange.sol";
-import {TestUSDC} from "../src/TestUSDC.sol";
-import {MockConditionalTokens} from "../test/mocks/MockConditionalTokens.sol";
 import {Deploy} from "../script/Deploy.s.sol";
 
 contract AddOperatorTest is Test {

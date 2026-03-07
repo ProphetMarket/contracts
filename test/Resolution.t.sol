@@ -15,6 +15,7 @@ contract ResolutionTest is Test {
 
     bytes32 constant CONDITION_A = keccak256("market-A");
     bytes32 constant CONDITION_B = keccak256("market-B");
+    string constant SAMPLE_CID = "QmTestCID1234567890abcdefghijklmnopqrstuvwxyz";
 
     function setUp() public {
         resolution = new Resolution(owner, oracle);
@@ -61,7 +62,7 @@ contract ResolutionTest is Test {
 
     function test_ReportPayoutsYesWins() public {
         vm.prank(oracle);
-        resolution.reportPayouts(CONDITION_A, _yesWins());
+        resolution.reportPayouts(CONDITION_A, _yesWins(), SAMPLE_CID);
 
         assertTrue(resolution.isReported(CONDITION_A));
         uint256[] memory p = resolution.getPayouts(CONDITION_A);
@@ -72,7 +73,7 @@ contract ResolutionTest is Test {
 
     function test_ReportPayoutsNoWins() public {
         vm.prank(oracle);
-        resolution.reportPayouts(CONDITION_A, _noWins());
+        resolution.reportPayouts(CONDITION_A, _noWins(), SAMPLE_CID);
 
         assertTrue(resolution.isReported(CONDITION_A));
         uint256[] memory p = resolution.getPayouts(CONDITION_A);
@@ -83,14 +84,33 @@ contract ResolutionTest is Test {
     function test_ReportPayoutsEmitsEvent() public {
         vm.prank(oracle);
         vm.expectEmit(true, false, false, true);
-        emit Resolution.PayoutsReported(CONDITION_A, _yesWins());
-        resolution.reportPayouts(CONDITION_A, _yesWins());
+        emit Resolution.PayoutsReported(CONDITION_A, _yesWins(), SAMPLE_CID);
+        resolution.reportPayouts(CONDITION_A, _yesWins(), SAMPLE_CID);
+    }
+
+    function test_ReportPayoutsStoresCid() public {
+        vm.prank(oracle);
+        resolution.reportPayouts(CONDITION_A, _yesWins(), SAMPLE_CID);
+
+        assertEq(resolution.getIpfsCid(CONDITION_A), SAMPLE_CID);
+    }
+
+    function test_ReportPayoutsEmptyCidAllowed() public {
+        vm.prank(oracle);
+        resolution.reportPayouts(CONDITION_A, _yesWins(), "");
+
+        assertTrue(resolution.isReported(CONDITION_A));
+        assertEq(resolution.getIpfsCid(CONDITION_A), "");
+    }
+
+    function test_GetIpfsCidEmptyForUnknown() public view {
+        assertEq(resolution.getIpfsCid(CONDITION_A), "");
     }
 
     function test_ReportPayoutsMultipleConditions() public {
         vm.startPrank(oracle);
-        resolution.reportPayouts(CONDITION_A, _yesWins());
-        resolution.reportPayouts(CONDITION_B, _noWins());
+        resolution.reportPayouts(CONDITION_A, _yesWins(), SAMPLE_CID);
+        resolution.reportPayouts(CONDITION_B, _noWins(), "");
         vm.stopPrank();
 
         assertTrue(resolution.isReported(CONDITION_A));
@@ -101,26 +121,29 @@ contract ResolutionTest is Test {
 
         uint256[] memory pB = resolution.getPayouts(CONDITION_B);
         assertEq(pB[0], 0);
+
+        assertEq(resolution.getIpfsCid(CONDITION_A), SAMPLE_CID);
+        assertEq(resolution.getIpfsCid(CONDITION_B), "");
     }
 
     function test_ReportPayoutsRevertsForNonOracle() public {
         vm.prank(alice);
         vm.expectRevert(Resolution.Unauthorized.selector);
-        resolution.reportPayouts(CONDITION_A, _yesWins());
+        resolution.reportPayouts(CONDITION_A, _yesWins(), SAMPLE_CID);
     }
 
     function test_ReportPayoutsRevertsForOwnerNotOracle() public {
         vm.prank(owner);
         vm.expectRevert(Resolution.Unauthorized.selector);
-        resolution.reportPayouts(CONDITION_A, _yesWins());
+        resolution.reportPayouts(CONDITION_A, _yesWins(), SAMPLE_CID);
     }
 
     function test_ReportPayoutsRevertsAlreadyReported() public {
         vm.startPrank(oracle);
-        resolution.reportPayouts(CONDITION_A, _yesWins());
+        resolution.reportPayouts(CONDITION_A, _yesWins(), SAMPLE_CID);
 
         vm.expectRevert(abi.encodeWithSelector(Resolution.AlreadyReported.selector, CONDITION_A));
-        resolution.reportPayouts(CONDITION_A, _noWins());
+        resolution.reportPayouts(CONDITION_A, _noWins(), SAMPLE_CID);
         vm.stopPrank();
     }
 
@@ -129,7 +152,7 @@ contract ResolutionTest is Test {
 
         vm.prank(oracle);
         vm.expectRevert(abi.encodeWithSelector(Resolution.InvalidPayoutsLength.selector, 0));
-        resolution.reportPayouts(CONDITION_A, empty);
+        resolution.reportPayouts(CONDITION_A, empty, SAMPLE_CID);
     }
 
     function test_ReportPayoutsRevertsLengthOne() public {
@@ -138,7 +161,7 @@ contract ResolutionTest is Test {
 
         vm.prank(oracle);
         vm.expectRevert(abi.encodeWithSelector(Resolution.InvalidPayoutsLength.selector, 1));
-        resolution.reportPayouts(CONDITION_A, one);
+        resolution.reportPayouts(CONDITION_A, one, SAMPLE_CID);
     }
 
     function test_ReportPayoutsRevertsLengthThree() public {
@@ -147,7 +170,7 @@ contract ResolutionTest is Test {
 
         vm.prank(oracle);
         vm.expectRevert(abi.encodeWithSelector(Resolution.InvalidPayoutsLength.selector, 3));
-        resolution.reportPayouts(CONDITION_A, three);
+        resolution.reportPayouts(CONDITION_A, three, SAMPLE_CID);
     }
 
     function test_ReportPayoutsRevertsBothZero() public {
@@ -155,7 +178,7 @@ contract ResolutionTest is Test {
 
         vm.prank(oracle);
         vm.expectRevert(Resolution.InvalidPayoutValues.selector);
-        resolution.reportPayouts(CONDITION_A, p);
+        resolution.reportPayouts(CONDITION_A, p, SAMPLE_CID);
     }
 
     function test_ReportPayoutsRevertsBothOne() public {
@@ -165,7 +188,7 @@ contract ResolutionTest is Test {
 
         vm.prank(oracle);
         vm.expectRevert(Resolution.InvalidPayoutValues.selector);
-        resolution.reportPayouts(CONDITION_A, p);
+        resolution.reportPayouts(CONDITION_A, p, SAMPLE_CID);
     }
 
     function test_ReportPayoutsRevertsInvalidValues() public {
@@ -175,7 +198,7 @@ contract ResolutionTest is Test {
 
         vm.prank(oracle);
         vm.expectRevert(Resolution.InvalidPayoutValues.selector);
-        resolution.reportPayouts(CONDITION_A, p);
+        resolution.reportPayouts(CONDITION_A, p, SAMPLE_CID);
     }
 
     // ── setOracle ────────────────────────────────────────────────────
@@ -198,7 +221,7 @@ contract ResolutionTest is Test {
         resolution.setOracle(alice);
 
         vm.prank(alice);
-        resolution.reportPayouts(CONDITION_A, _yesWins());
+        resolution.reportPayouts(CONDITION_A, _yesWins(), SAMPLE_CID);
         assertTrue(resolution.isReported(CONDITION_A));
     }
 
@@ -208,7 +231,7 @@ contract ResolutionTest is Test {
 
         vm.prank(oracle);
         vm.expectRevert(Resolution.Unauthorized.selector);
-        resolution.reportPayouts(CONDITION_A, _yesWins());
+        resolution.reportPayouts(CONDITION_A, _yesWins(), SAMPLE_CID);
     }
 
     function test_SetOracleRevertsForNonOwner() public {
@@ -246,22 +269,31 @@ contract ResolutionTest is Test {
 
     function testFuzz_ReportPayoutsRandomConditionId(bytes32 conditionId) public {
         vm.prank(oracle);
-        resolution.reportPayouts(conditionId, _yesWins());
+        resolution.reportPayouts(conditionId, _yesWins(), SAMPLE_CID);
 
         assertTrue(resolution.isReported(conditionId));
         uint256[] memory p = resolution.getPayouts(conditionId);
         assertEq(p[0], 1);
         assertEq(p[1], 0);
+        assertEq(resolution.getIpfsCid(conditionId), SAMPLE_CID);
     }
 
     function testFuzz_ReportPayoutsRandomConditionIdNoWins(bytes32 conditionId) public {
         vm.prank(oracle);
-        resolution.reportPayouts(conditionId, _noWins());
+        resolution.reportPayouts(conditionId, _noWins(), SAMPLE_CID);
 
         assertTrue(resolution.isReported(conditionId));
         uint256[] memory p = resolution.getPayouts(conditionId);
         assertEq(p[0], 0);
         assertEq(p[1], 1);
+    }
+
+    function testFuzz_ReportPayoutsRandomCid(bytes32 conditionId, string calldata ipfsCid) public {
+        vm.prank(oracle);
+        resolution.reportPayouts(conditionId, _yesWins(), ipfsCid);
+
+        assertTrue(resolution.isReported(conditionId));
+        assertEq(resolution.getIpfsCid(conditionId), ipfsCid);
     }
 
     function testFuzz_ReportPayoutsRevertsInvalidValues(uint256 a, uint256 b) public {
@@ -273,6 +305,6 @@ contract ResolutionTest is Test {
 
         vm.prank(oracle);
         vm.expectRevert(Resolution.InvalidPayoutValues.selector);
-        resolution.reportPayouts(CONDITION_A, p);
+        resolution.reportPayouts(CONDITION_A, p, SAMPLE_CID);
     }
 }

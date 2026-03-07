@@ -11,3 +11,9 @@ remappings = [
     "exchange/=lib/ctf-exchange/src/exchange/",
     "solady/=lib/ctf-exchange/lib/solady/src/",
 ]
+
+[lint]
+exclude_lints = [
+    "unsafe-cheatcode",   # vm.setEnv is required in deployment script tests
+    "incorrect-shift",    # False positive on standard bitmask pattern in MockConditionalTokens
+]
