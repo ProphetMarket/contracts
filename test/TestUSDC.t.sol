@@ -128,16 +128,29 @@ contract TestUSDCTest is Test {
         vm.stopPrank();
     }
 
-    function test_FaucetCooldownIsPerCaller() public {
+    function test_FaucetCooldownIsPerRecipient() public {
+        // Alice faucets to herself
         vm.prank(alice);
         token.faucet(alice, 1_000 * 10 ** 6);
 
-        // Bob can faucet immediately (different caller)
-        vm.prank(bob);
+        // Same caller (alice) can faucet to bob immediately (different recipient)
+        vm.prank(alice);
         token.faucet(bob, 1_000 * 10 ** 6);
 
         assertEq(token.balanceOf(alice), 1_000 * 10 ** 6);
         assertEq(token.balanceOf(bob), 1_000 * 10 ** 6);
+    }
+
+    function test_FaucetCooldownBlocksDifferentCallerSameRecipient() public {
+        // Alice faucets to bob
+        vm.prank(alice);
+        token.faucet(bob, 1_000 * 10 ** 6);
+
+        // Bob tries to faucet to bob — blocked by recipient cooldown
+        uint256 availableAt = block.timestamp + COOLDOWN;
+        vm.prank(bob);
+        vm.expectRevert(abi.encodeWithSelector(TestUSDC.FaucetCooldownActive.selector, availableAt));
+        token.faucet(bob, 1_000 * 10 ** 6);
     }
 
     function test_FaucetUpdatesLastFaucetTime() public {

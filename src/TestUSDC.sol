@@ -12,7 +12,7 @@ contract TestUSDC is ERC20, Ownable {
     uint256 public constant FAUCET_MAX_AMOUNT = 100_000 * 10 ** DECIMALS;
     uint256 public constant FAUCET_COOLDOWN = 24 hours;
 
-    mapping(address caller => uint256 lastUsed) public lastFaucetTime;
+    mapping(address recipient => uint256 lastUsed) public lastFaucetTime;
 
     error MainnetDeploymentBlocked();
     error FaucetAmountExceedsMax(uint256 requested, uint256 max);
@@ -39,7 +39,7 @@ contract TestUSDC is ERC20, Ownable {
             revert FaucetAmountExceedsMax(amount, FAUCET_MAX_AMOUNT);
         }
 
-        uint256 lastUsed = lastFaucetTime[msg.sender];
+        uint256 lastUsed = lastFaucetTime[to];
         if (lastUsed != 0) {
             uint256 availableAt = lastUsed + FAUCET_COOLDOWN;
             if (block.timestamp < availableAt) {
@@ -47,7 +47,7 @@ contract TestUSDC is ERC20, Ownable {
             }
         }
 
-        lastFaucetTime[msg.sender] = block.timestamp;
+        lastFaucetTime[to] = block.timestamp;
         _mint(to, amount);
     }
 }
