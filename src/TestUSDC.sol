@@ -9,14 +9,14 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 /// @dev Reverts on Polygon mainnet (chain ID 137) to prevent accidental deployment.
 contract TestUSDC is ERC20, Ownable {
     uint8 private constant DECIMALS = 6;
-    uint256 public constant FAUCET_MAX_AMOUNT = 100_000 * 10 ** DECIMALS;
-    uint256 public constant FAUCET_COOLDOWN = 24 hours;
+    uint256 public constant FAUCET_WINDOW_LIMIT = 100_000 * 10 ** DECIMALS;
+    uint256 public constant FAUCET_WINDOW = 24 hours;
 
-    mapping(address recipient => uint256 lastUsed) public lastFaucetTime;
+    mapping(address recipient => uint256 start) public faucetWindowStart;
+    mapping(address recipient => uint256 used) public faucetWindowUsed;
 
     error MainnetDeploymentBlocked();
-    error FaucetAmountExceedsMax(uint256 requested, uint256 max);
-    error FaucetCooldownActive(uint256 availableAt);
+    error FaucetWindowExceeded(uint256 requested, uint256 remaining);
 
     constructor(address initialOwner) ERC20("Test USD Coin", "USDC") Ownable(initialOwner) {
         if (block.chainid == 137) revert MainnetDeploymentBlocked();
@@ -31,23 +31,26 @@ contract TestUSDC is ERC20, Ownable {
         _mint(to, amount);
     }
 
-    /// @notice Public faucet for testnet use. Caller-rate-limited to one call per 24 hours.
+    /// @notice Public faucet for testnet use. Rate-limited to 100,000 USDC cumulative per 24-hour window.
     /// @param to Recipient address.
-    /// @param amount Amount to mint (max 100,000 USDC per call).
+    /// @param amount Amount to mint (up to remaining window allowance).
     function faucet(address to, uint256 amount) external {
-        if (amount > FAUCET_MAX_AMOUNT) {
-            revert FaucetAmountExceedsMax(amount, FAUCET_MAX_AMOUNT);
+        uint256 windowStart = faucetWindowStart[to];
+        uint256 usedAmount = faucetWindowUsed[to];
+
+        // Reset window if expired or first call
+        if (windowStart == 0 || block.timestamp >= windowStart + FAUCET_WINDOW) {
+            windowStart = block.timestamp;
+            usedAmount = 0;
+            faucetWindowStart[to] = windowStart;
         }
 
-        uint256 lastUsed = lastFaucetTime[to];
-        if (lastUsed != 0) {
-            uint256 availableAt = lastUsed + FAUCET_COOLDOWN;
-            if (block.timestamp < availableAt) {
-                revert FaucetCooldownActive(availableAt);
-            }
+        uint256 remaining = FAUCET_WINDOW_LIMIT - usedAmount;
+        if (amount > remaining) {
+            revert FaucetWindowExceeded(amount, remaining);
         }
 
-        lastFaucetTime[to] = block.timestamp;
+        faucetWindowUsed[to] = usedAmount + amount;
         _mint(to, amount);
     }
 }

@@ -12,8 +12,8 @@ contract TestUSDCTest is Test {
     address public alice = address(0x2);
     address public bob = address(0x3);
 
-    uint256 constant FAUCET_MAX = 100_000 * 10 ** 6;
-    uint256 constant COOLDOWN = 24 hours;
+    uint256 constant WINDOW_LIMIT = 100_000 * 10 ** 6;
+    uint256 constant WINDOW = 24 hours;
 
     function setUp() public {
         token = new TestUSDC(owner);
@@ -93,42 +93,54 @@ contract TestUSDCTest is Test {
 
     function test_FaucetMaxAmount() public {
         vm.prank(alice);
-        token.faucet(alice, FAUCET_MAX);
-        assertEq(token.balanceOf(alice), FAUCET_MAX);
+        token.faucet(alice, WINDOW_LIMIT);
+        assertEq(token.balanceOf(alice), WINDOW_LIMIT);
     }
 
-    function test_FaucetRevertsOverMax() public {
+    function test_FaucetRevertsOverWindowLimit() public {
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(TestUSDC.FaucetAmountExceedsMax.selector, FAUCET_MAX + 1, FAUCET_MAX));
-        token.faucet(alice, FAUCET_MAX + 1);
+        vm.expectRevert(abi.encodeWithSelector(TestUSDC.FaucetWindowExceeded.selector, WINDOW_LIMIT + 1, WINDOW_LIMIT));
+        token.faucet(alice, WINDOW_LIMIT + 1);
     }
 
-    function test_FaucetCooldownBlocksSecondCall() public {
+    function test_FaucetMultipleCallsWithinWindow() public {
         vm.startPrank(alice);
 
         token.faucet(alice, 1_000 * 10 ** 6);
+        token.faucet(alice, 2_000 * 10 ** 6);
+        token.faucet(alice, 500 * 10 ** 6);
 
-        uint256 availableAt = block.timestamp + COOLDOWN;
-        vm.expectRevert(abi.encodeWithSelector(TestUSDC.FaucetCooldownActive.selector, availableAt));
-        token.faucet(alice, 1_000 * 10 ** 6);
+        assertEq(token.balanceOf(alice), 3_500 * 10 ** 6);
 
         vm.stopPrank();
     }
 
-    function test_FaucetWorksAfterCooldown() public {
+    function test_FaucetRevertsWhenCumulativeExceedsLimit() public {
         vm.startPrank(alice);
 
-        token.faucet(alice, 1_000 * 10 ** 6);
+        token.faucet(alice, 60_000 * 10 ** 6);
 
-        vm.warp(block.timestamp + COOLDOWN);
+        uint256 remaining = WINDOW_LIMIT - 60_000 * 10 ** 6;
+        vm.expectRevert(abi.encodeWithSelector(TestUSDC.FaucetWindowExceeded.selector, 50_000 * 10 ** 6, remaining));
+        token.faucet(alice, 50_000 * 10 ** 6);
+
+        vm.stopPrank();
+    }
+
+    function test_FaucetWindowResetsAfter24Hours() public {
+        vm.startPrank(alice);
+
+        token.faucet(alice, WINDOW_LIMIT);
+
+        vm.warp(block.timestamp + WINDOW);
         token.faucet(alice, 2_000 * 10 ** 6);
 
-        assertEq(token.balanceOf(alice), 3_000 * 10 ** 6);
+        assertEq(token.balanceOf(alice), WINDOW_LIMIT + 2_000 * 10 ** 6);
 
         vm.stopPrank();
     }
 
-    function test_FaucetCooldownIsPerRecipient() public {
+    function test_FaucetWindowIsPerRecipient() public {
         // Alice faucets to herself
         vm.prank(alice);
         token.faucet(alice, 1_000 * 10 ** 6);
@@ -141,26 +153,26 @@ contract TestUSDCTest is Test {
         assertEq(token.balanceOf(bob), 1_000 * 10 ** 6);
     }
 
-    function test_FaucetCooldownBlocksDifferentCallerSameRecipient() public {
-        // Alice faucets to bob
+    function test_FaucetWindowBlocksDifferentCallerSameRecipient() public {
+        // Alice faucets to bob — uses bob's window
         vm.prank(alice);
-        token.faucet(bob, 1_000 * 10 ** 6);
+        token.faucet(bob, WINDOW_LIMIT);
 
-        // Bob tries to faucet to bob — blocked by recipient cooldown
-        uint256 availableAt = block.timestamp + COOLDOWN;
+        // Bob tries to faucet to bob — bob's window is full
         vm.prank(bob);
-        vm.expectRevert(abi.encodeWithSelector(TestUSDC.FaucetCooldownActive.selector, availableAt));
-        token.faucet(bob, 1_000 * 10 ** 6);
+        vm.expectRevert(abi.encodeWithSelector(TestUSDC.FaucetWindowExceeded.selector, 1, 0));
+        token.faucet(bob, 1);
     }
 
-    function test_FaucetUpdatesLastFaucetTime() public {
+    function test_FaucetTracksWindowStart() public {
         uint256 ts = 1_700_000_000;
         vm.warp(ts);
 
         vm.prank(alice);
         token.faucet(alice, 1_000 * 10 ** 6);
 
-        assertEq(token.lastFaucetTime(alice), ts);
+        assertEq(token.faucetWindowStart(alice), ts);
+        assertEq(token.faucetWindowUsed(alice), 1_000 * 10 ** 6);
     }
 
     // ── ERC-20 transfers ────────────────────────────────────────────
@@ -195,7 +207,7 @@ contract TestUSDCTest is Test {
     // ── Fuzz ────────────────────────────────────────────────────────
 
     function testFuzz_FaucetAmountUpToMax(uint256 amount) public {
-        amount = bound(amount, 0, FAUCET_MAX);
+        amount = bound(amount, 0, WINDOW_LIMIT);
 
         vm.prank(alice);
         token.faucet(alice, amount);
