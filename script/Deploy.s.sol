@@ -8,6 +8,21 @@ import {Resolution} from "../src/Resolution.sol";
 import {ProphetCTFExchange} from "../src/ProphetCTFExchange.sol";
 import {MockConditionalTokens} from "../test/mocks/MockConditionalTokens.sol";
 
+/// @param deployedUsdc       Pre-deployed TestUSDC (address(0) = deploy fresh)
+/// @param deployedCtf        Pre-deployed ConditionalTokens (address(0) = deploy fresh)
+/// @param deployedResolution Pre-deployed Resolution (address(0) = deploy fresh)
+/// @param deployedExchange   Pre-deployed ProphetCTFExchange (address(0) = deploy fresh)
+/// @param operatorAddress    Register as operator on exchange (address(0) = skip)
+/// @param adminAddress       Register as admin on exchange (address(0) = skip)
+struct DeployConfig {
+    address deployedUsdc;
+    address deployedCtf;
+    address deployedResolution;
+    address deployedExchange;
+    address operatorAddress;
+    address adminAddress;
+}
+
 /// @title Deploy
 /// @notice Deploys all Prophet contracts to Polygon Amoy in the correct order.
 /// @dev Idempotent: set DEPLOYED_USDC, DEPLOYED_CTF, DEPLOYED_RESOLUTION, or DEPLOYED_EXCHANGE
@@ -46,31 +61,51 @@ contract Deploy is Script {
         if (block.chainid == 137) revert MainnetNotSupported();
 
         vm.startBroadcast();
-        _deploy(msg.sender);
+        _deploy(msg.sender, _configFromEnv());
         vm.stopBroadcast();
     }
 
-    /// @notice Test entry point — broadcasts as the given address (simulation only, no key needed).
+    /// @notice Test entry point — broadcasts as the given address, reads config from env vars.
     function run(address deployer) external {
         if (block.chainid == 137) revert MainnetNotSupported();
 
         vm.startBroadcast(deployer);
-        _deploy(deployer);
+        _deploy(deployer, _configFromEnv());
         vm.stopBroadcast();
     }
 
-    function _deploy(address deployer) internal {
+    /// @notice Test entry point — broadcasts as the given address, config passed directly (no env vars).
+    function run(address deployer, DeployConfig memory cfg) external {
+        if (block.chainid == 137) revert MainnetNotSupported();
+
+        vm.startBroadcast(deployer);
+        _deploy(deployer, cfg);
+        vm.stopBroadcast();
+    }
+
+    function _configFromEnv() internal view returns (DeployConfig memory) {
+        return DeployConfig({
+            deployedUsdc: _envAddress("DEPLOYED_USDC"),
+            deployedCtf: _envAddress("DEPLOYED_CTF"),
+            deployedResolution: _envAddress("DEPLOYED_RESOLUTION"),
+            deployedExchange: _envAddress("DEPLOYED_EXCHANGE"),
+            operatorAddress: _envAddress("OPERATOR_ADDRESS"),
+            adminAddress: _envAddress("ADMIN_ADDRESS")
+        });
+    }
+
+    function _deploy(address deployer, DeployConfig memory cfg) internal {
         console.log("=== Prophet Contract Deployment ===");
         console.log("Deployer:", deployer);
         console.log("Chain ID:", block.chainid);
         console.log("");
 
-        address usdc = _deployUsdc(deployer);
-        address ctf = _deployCtf();
-        address resolution = _deployResolution(deployer);
-        address exchange = _deployExchange(usdc, ctf);
+        address usdc = _deployUsdc(deployer, cfg.deployedUsdc);
+        address ctf = _deployCtf(cfg.deployedCtf);
+        address resolution = _deployResolution(deployer, cfg.deployedResolution);
+        address exchange = _deployExchange(usdc, ctf, cfg.deployedExchange);
 
-        _configureExchange(exchange);
+        _configureExchange(exchange, cfg.operatorAddress, cfg.adminAddress);
 
         // Persist addresses so they're readable by callers / tests.
         deployedUsdc = usdc;
@@ -88,8 +123,7 @@ contract Deploy is Script {
 
     // ── Individual deployers ────────────────────────────────────────
 
-    function _deployUsdc(address owner) internal returns (address) {
-        address existing = _envAddress("DEPLOYED_USDC");
+    function _deployUsdc(address owner, address existing) internal returns (address) {
         if (_isDeployed(existing)) {
             console.log("[SKIP] TestUSDC already deployed at", existing);
             return existing;
@@ -100,8 +134,7 @@ contract Deploy is Script {
         return address(usdc);
     }
 
-    function _deployCtf() internal returns (address) {
-        address existing = _envAddress("DEPLOYED_CTF");
+    function _deployCtf(address existing) internal returns (address) {
         if (_isDeployed(existing)) {
             console.log("[SKIP] ConditionalTokens already deployed at", existing);
             return existing;
@@ -112,8 +145,7 @@ contract Deploy is Script {
         return address(ctf);
     }
 
-    function _deployResolution(address owner) internal returns (address) {
-        address existing = _envAddress("DEPLOYED_RESOLUTION");
+    function _deployResolution(address owner, address existing) internal returns (address) {
         if (_isDeployed(existing)) {
             console.log("[SKIP] Resolution already deployed at", existing);
             return existing;
@@ -126,8 +158,7 @@ contract Deploy is Script {
         return address(res);
     }
 
-    function _deployExchange(address usdc, address ctf) internal returns (address) {
-        address existing = _envAddress("DEPLOYED_EXCHANGE");
+    function _deployExchange(address usdc, address ctf, address existing) internal returns (address) {
         if (_isDeployed(existing)) {
             console.log("[SKIP] ProphetCTFExchange already deployed at", existing);
             return existing;
@@ -140,16 +171,14 @@ contract Deploy is Script {
 
     // ── Post-deployment configuration ───────────────────────────────
 
-    function _configureExchange(address exchange) internal {
+    function _configureExchange(address exchange, address operatorAddr, address adminAddr) internal {
         ProphetCTFExchange ex = ProphetCTFExchange(exchange);
 
-        address operatorAddr = _envAddress("OPERATOR_ADDRESS");
         if (operatorAddr != address(0) && !ex.isOperator(operatorAddr)) {
             ex.addOperator(operatorAddr);
             console.log("[CONFIG] Added operator:", operatorAddr);
         }
 
-        address adminAddr = _envAddress("ADMIN_ADDRESS");
         if (adminAddr != address(0) && !ex.isAdmin(adminAddr)) {
             ex.addAdmin(adminAddr);
             console.log("[CONFIG] Added admin:", adminAddr);

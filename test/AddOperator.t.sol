@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 import {Test} from "forge-std/Test.sol";
 import {AddOperator} from "../script/AddOperator.s.sol";
 import {ProphetCTFExchange} from "../src/ProphetCTFExchange.sol";
-import {Deploy} from "../script/Deploy.s.sol";
+import {Deploy, DeployConfig} from "../script/Deploy.s.sol";
 
 contract AddOperatorTest is Test {
     AddOperator public script;
@@ -17,21 +17,20 @@ contract AddOperatorTest is Test {
         deployer = makeAddr("deployer");
         operator = makeAddr("operator");
 
-        // Deploy a fresh exchange via the Deploy script.
-        vm.setEnv("DEPLOYED_USDC", "");
-        vm.setEnv("DEPLOYED_CTF", "");
-        vm.setEnv("DEPLOYED_RESOLUTION", "");
-        vm.setEnv("DEPLOYED_EXCHANGE", "");
-        vm.setEnv("OPERATOR_ADDRESS", "");
-        vm.setEnv("ADMIN_ADDRESS", "");
-
+        // Deploy a fresh exchange via the Deploy script (no env vars needed).
         Deploy deployScript = new Deploy();
-        deployScript.run(deployer);
+        deployScript.run(
+            deployer,
+            DeployConfig({
+                deployedUsdc: address(0),
+                deployedCtf: address(0),
+                deployedResolution: address(0),
+                deployedExchange: address(0),
+                operatorAddress: address(0),
+                adminAddress: address(0)
+            })
+        );
         exchange = ProphetCTFExchange(deployScript.deployedExchange());
-
-        // Set env vars for AddOperator script.
-        vm.setEnv("EXCHANGE_ADDRESS", vm.toString(address(exchange)));
-        vm.setEnv("OPERATOR_ADDRESS", vm.toString(operator));
 
         script = new AddOperator();
     }
@@ -41,7 +40,7 @@ contract AddOperatorTest is Test {
     function test_RegistersNewOperator() public {
         assertFalse(exchange.isOperator(operator), "operator should not be registered yet");
 
-        script.run(deployer);
+        script.run(deployer, address(exchange), operator);
 
         assertTrue(exchange.isOperator(operator), "operator should be registered");
     }
@@ -49,27 +48,23 @@ contract AddOperatorTest is Test {
     // ── Idempotency ──────────────────────────────────────────────────
 
     function test_IdempotentDoubleRun() public {
-        script.run(deployer);
+        script.run(deployer, address(exchange), operator);
         assertTrue(exchange.isOperator(operator));
 
         // Second run should not revert.
-        script.run(deployer);
+        script.run(deployer, address(exchange), operator);
         assertTrue(exchange.isOperator(operator));
     }
 
     // ── Validation ───────────────────────────────────────────────────
 
     function test_RevertsWithZeroExchangeAddress() public {
-        vm.setEnv("EXCHANGE_ADDRESS", vm.toString(address(0)));
-
         vm.expectRevert(AddOperator.ExchangeAddressRequired.selector);
-        script.run(deployer);
+        script.run(deployer, address(0), operator);
     }
 
     function test_RevertsWithZeroOperatorAddress() public {
-        vm.setEnv("OPERATOR_ADDRESS", vm.toString(address(0)));
-
         vm.expectRevert(AddOperator.OperatorAddressRequired.selector);
-        script.run(deployer);
+        script.run(deployer, address(exchange), address(0));
     }
 }

@@ -14,6 +14,5 @@ remappings = [
 
 [lint]
 exclude_lints = [
-    "unsafe-cheatcode",   # vm.setEnv is required in deployment script tests
     "incorrect-shift",    # False positive on standard bitmask pattern in MockConditionalTokens
 ]

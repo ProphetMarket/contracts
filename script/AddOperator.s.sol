@@ -37,11 +37,21 @@ contract AddOperator is Script {
         vm.stopBroadcast();
     }
 
-    /// @notice Test entry point — broadcasts as the given address (simulation only, no key needed).
+    /// @notice Test entry point — broadcasts as the given address, reads config from env vars.
     function run(address deployer) external {
         address exchange = vm.envAddress("EXCHANGE_ADDRESS");
         address operator = vm.envAddress("OPERATOR_ADDRESS");
 
+        if (exchange == address(0)) revert ExchangeAddressRequired();
+        if (operator == address(0)) revert OperatorAddressRequired();
+
+        vm.startBroadcast(deployer);
+        _addOperator(exchange, operator);
+        vm.stopBroadcast();
+    }
+
+    /// @notice Test entry point — config passed directly (no env vars).
+    function run(address deployer, address exchange, address operator) external {
         if (exchange == address(0)) revert ExchangeAddressRequired();
         if (operator == address(0)) revert OperatorAddressRequired();
 

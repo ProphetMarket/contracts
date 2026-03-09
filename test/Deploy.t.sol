@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {Test} from "forge-std/Test.sol";
-import {Deploy} from "../script/Deploy.s.sol";
+import {Deploy, DeployConfig} from "../script/Deploy.s.sol";
 import {TestUSDC} from "../src/TestUSDC.sol";
 import {Resolution} from "../src/Resolution.sol";
 import {ProphetCTFExchange} from "../src/ProphetCTFExchange.sol";
@@ -15,20 +15,25 @@ contract DeployTest is Test {
 
     function setUp() public {
         deployer = makeAddr("deployer");
-        // Clear all optional env vars to prevent state leaking between tests
-        vm.setEnv("DEPLOYED_USDC", "");
-        vm.setEnv("DEPLOYED_CTF", "");
-        vm.setEnv("DEPLOYED_RESOLUTION", "");
-        vm.setEnv("DEPLOYED_EXCHANGE", "");
-        vm.setEnv("OPERATOR_ADDRESS", "");
-        vm.setEnv("ADMIN_ADDRESS", "");
         deployScript = new Deploy();
+    }
+
+    /// @dev Returns a zeroed-out config (fresh deploy, no extra roles).
+    function _emptyConfig() internal pure returns (DeployConfig memory) {
+        return DeployConfig({
+            deployedUsdc: address(0),
+            deployedCtf: address(0),
+            deployedResolution: address(0),
+            deployedExchange: address(0),
+            operatorAddress: address(0),
+            adminAddress: address(0)
+        });
     }
 
     // ── Fresh deployment ────────────────────────────────────────────
 
     function test_DeploysAllFourContracts() public {
-        deployScript.run(deployer);
+        deployScript.run(deployer, _emptyConfig());
 
         assertTrue(deployScript.deployedUsdc() != address(0), "USDC not deployed");
         assertTrue(deployScript.deployedCtf() != address(0), "CTF not deployed");
@@ -37,14 +42,14 @@ contract DeployTest is Test {
     }
 
     function test_DeployedUsdcHasCorrectOwner() public {
-        deployScript.run(deployer);
+        deployScript.run(deployer, _emptyConfig());
 
         TestUSDC usdc = TestUSDC(deployScript.deployedUsdc());
         assertEq(usdc.owner(), deployer);
     }
 
     function test_DeployedResolutionHasCorrectOwnerAndOracle() public {
-        deployScript.run(deployer);
+        deployScript.run(deployer, _emptyConfig());
 
         Resolution res = Resolution(deployScript.deployedResolution());
         assertEq(res.owner(), deployer);
@@ -52,7 +57,7 @@ contract DeployTest is Test {
     }
 
     function test_DeployedExchangeHasDeployerAsAdminAndOperator() public {
-        deployScript.run(deployer);
+        deployScript.run(deployer, _emptyConfig());
 
         ProphetCTFExchange exchange = ProphetCTFExchange(deployScript.deployedExchange());
         assertTrue(exchange.isAdmin(deployer));
@@ -60,7 +65,7 @@ contract DeployTest is Test {
     }
 
     function test_ExchangeApprovesUsdcToCtf() public {
-        deployScript.run(deployer);
+        deployScript.run(deployer, _emptyConfig());
 
         TestUSDC usdc = TestUSDC(deployScript.deployedUsdc());
         uint256 allowance = usdc.allowance(deployScript.deployedExchange(), deployScript.deployedCtf());
@@ -76,31 +81,34 @@ contract DeployTest is Test {
     }
 
     // ── Idempotency: skip already-deployed contracts ────────────────
-    // These tests verify the script completes successfully when pre-deployed
-    // addresses are provided. The script logs [SKIP] for each recognized address.
 
     function test_SkipsAlreadyDeployedUsdc() public {
         TestUSDC preUsdc = new TestUSDC(deployer);
-        vm.setEnv("DEPLOYED_USDC", vm.toString(address(preUsdc)));
 
-        deployScript.run(deployer);
+        DeployConfig memory cfg = _emptyConfig();
+        cfg.deployedUsdc = address(preUsdc);
 
-        // Pre-deployed USDC should still be intact
+        deployScript.run(deployer, cfg);
+
         assertEq(preUsdc.owner(), deployer);
     }
 
     function test_SkipsAlreadyDeployedCtf() public {
         MockConditionalTokens preCtf = new MockConditionalTokens();
-        vm.setEnv("DEPLOYED_CTF", vm.toString(address(preCtf)));
 
-        deployScript.run(deployer);
+        DeployConfig memory cfg = _emptyConfig();
+        cfg.deployedCtf = address(preCtf);
+
+        deployScript.run(deployer, cfg);
     }
 
     function test_SkipsAlreadyDeployedResolution() public {
         Resolution preRes = new Resolution(deployer, deployer);
-        vm.setEnv("DEPLOYED_RESOLUTION", vm.toString(address(preRes)));
 
-        deployScript.run(deployer);
+        DeployConfig memory cfg = _emptyConfig();
+        cfg.deployedResolution = address(preRes);
+
+        deployScript.run(deployer, cfg);
 
         assertEq(preRes.owner(), deployer);
     }
@@ -114,11 +122,12 @@ contract DeployTest is Test {
         );
         vm.stopPrank();
 
-        vm.setEnv("DEPLOYED_USDC", vm.toString(address(usdc)));
-        vm.setEnv("DEPLOYED_CTF", vm.toString(address(ctf)));
-        vm.setEnv("DEPLOYED_EXCHANGE", vm.toString(address(preExchange)));
+        DeployConfig memory cfg = _emptyConfig();
+        cfg.deployedUsdc = address(usdc);
+        cfg.deployedCtf = address(ctf);
+        cfg.deployedExchange = address(preExchange);
 
-        deployScript.run(deployer);
+        deployScript.run(deployer, cfg);
 
         assertTrue(preExchange.isAdmin(deployer));
     }
@@ -133,14 +142,17 @@ contract DeployTest is Test {
         );
         vm.stopPrank();
 
-        vm.setEnv("DEPLOYED_USDC", vm.toString(address(usdc)));
-        vm.setEnv("DEPLOYED_CTF", vm.toString(address(ctf)));
-        vm.setEnv("DEPLOYED_RESOLUTION", vm.toString(address(res)));
-        vm.setEnv("DEPLOYED_EXCHANGE", vm.toString(address(exchange)));
+        DeployConfig memory cfg = DeployConfig({
+            deployedUsdc: address(usdc),
+            deployedCtf: address(ctf),
+            deployedResolution: address(res),
+            deployedExchange: address(exchange),
+            operatorAddress: address(0),
+            adminAddress: address(0)
+        });
 
-        deployScript.run(deployer);
+        deployScript.run(deployer, cfg);
 
-        // All four should use the pre-deployed addresses
         assertEq(deployScript.deployedUsdc(), address(usdc));
         assertEq(deployScript.deployedCtf(), address(ctf));
         assertEq(deployScript.deployedResolution(), address(res));
@@ -151,9 +163,11 @@ contract DeployTest is Test {
 
     function test_RegistersSeparateOperator() public {
         address operator = address(0xBEEF);
-        vm.setEnv("OPERATOR_ADDRESS", vm.toString(operator));
 
-        deployScript.run(deployer);
+        DeployConfig memory cfg = _emptyConfig();
+        cfg.operatorAddress = operator;
+
+        deployScript.run(deployer, cfg);
 
         ProphetCTFExchange exchange = ProphetCTFExchange(deployScript.deployedExchange());
         assertTrue(exchange.isOperator(operator));
@@ -161,9 +175,11 @@ contract DeployTest is Test {
 
     function test_RegistersSeparateAdmin() public {
         address admin = address(0xCAFE);
-        vm.setEnv("ADMIN_ADDRESS", vm.toString(admin));
 
-        deployScript.run(deployer);
+        DeployConfig memory cfg = _emptyConfig();
+        cfg.adminAddress = admin;
+
+        deployScript.run(deployer, cfg);
 
         ProphetCTFExchange exchange = ProphetCTFExchange(deployScript.deployedExchange());
         assertTrue(exchange.isAdmin(admin));
@@ -172,10 +188,12 @@ contract DeployTest is Test {
     function test_RegistersBothOperatorAndAdmin() public {
         address operator = address(0xBEEF);
         address admin = address(0xCAFE);
-        vm.setEnv("OPERATOR_ADDRESS", vm.toString(operator));
-        vm.setEnv("ADMIN_ADDRESS", vm.toString(admin));
 
-        deployScript.run(deployer);
+        DeployConfig memory cfg = _emptyConfig();
+        cfg.operatorAddress = operator;
+        cfg.adminAddress = admin;
+
+        deployScript.run(deployer, cfg);
 
         ProphetCTFExchange exchange = ProphetCTFExchange(deployScript.deployedExchange());
         assertTrue(exchange.isOperator(operator));
