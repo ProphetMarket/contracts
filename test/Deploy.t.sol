@@ -7,25 +7,25 @@ import {TestUSDC} from "../src/TestUSDC.sol";
 import {Resolution} from "../src/Resolution.sol";
 import {ProphetCTFExchange} from "../src/ProphetCTFExchange.sol";
 import {MockConditionalTokens} from "../test/mocks/MockConditionalTokens.sol";
+import {MockPolySafeFactory} from "../test/mocks/MockPolySafeFactory.sol";
 
 contract DeployTest is Test {
     Deploy public deployScript;
+    MockPolySafeFactory public safeFactory;
 
     address public deployer;
 
-    // Dummy Safe addresses used by tests that manually create a ProphetCTFExchange.
-    // These don't need real bytecode — the exchange constructor stores them but
-    // doesn't call them.
-    address constant SAFE_FACTORY = address(0xFA);
-    address constant SAFE_SINGLETON = address(0x5A);
+    /// @dev A known masterCopy address for the mock factory.
+    address constant MOCK_SINGLETON = address(0x5afe5afE5afE5afE5afE5aFe5aFe5Afe5Afe5AfE);
 
     function setUp() public {
         deployer = makeAddr("deployer");
         deployScript = new Deploy();
+        safeFactory = new MockPolySafeFactory(MOCK_SINGLETON);
     }
 
-    /// @dev Returns a config for fresh deploy with dummy Safe addresses (no extra roles).
-    function _emptyConfig() internal pure returns (DeployConfig memory) {
+    /// @dev Returns a config for fresh deploy with MockPolySafeFactory (no extra roles).
+    function _emptyConfig() internal view returns (DeployConfig memory) {
         return DeployConfig({
             deployedUsdc: address(0),
             deployedCtf: address(0),
@@ -33,8 +33,7 @@ contract DeployTest is Test {
             deployedExchange: address(0),
             operatorAddress: address(0),
             adminAddress: address(0),
-            safeFactoryAddress: SAFE_FACTORY,
-            safeSingletonAddress: SAFE_SINGLETON
+            safeFactoryAddress: address(safeFactory)
         });
     }
 
@@ -108,6 +107,8 @@ contract DeployTest is Test {
         cfg.deployedCtf = address(preCtf);
 
         deployScript.run(deployer, cfg);
+
+        assertEq(deployScript.deployedCtf(), address(preCtf));
     }
 
     function test_SkipsAlreadyDeployedResolution() public {
@@ -126,7 +127,7 @@ contract DeployTest is Test {
         TestUSDC usdc = new TestUSDC(deployer);
         MockConditionalTokens ctf = new MockConditionalTokens();
         ProphetCTFExchange preExchange =
-            new ProphetCTFExchange(address(usdc), address(ctf), SAFE_FACTORY, SAFE_SINGLETON);
+            new ProphetCTFExchange(address(usdc), address(ctf), address(0), address(safeFactory));
         vm.stopPrank();
 
         DeployConfig memory cfg = _emptyConfig();
@@ -144,7 +145,8 @@ contract DeployTest is Test {
         TestUSDC usdc = new TestUSDC(deployer);
         MockConditionalTokens ctf = new MockConditionalTokens();
         Resolution res = new Resolution(deployer, deployer);
-        ProphetCTFExchange exchange = new ProphetCTFExchange(address(usdc), address(ctf), SAFE_FACTORY, SAFE_SINGLETON);
+        ProphetCTFExchange exchange =
+            new ProphetCTFExchange(address(usdc), address(ctf), address(0), address(safeFactory));
         vm.stopPrank();
 
         DeployConfig memory cfg = DeployConfig({
@@ -154,8 +156,7 @@ contract DeployTest is Test {
             deployedExchange: address(exchange),
             operatorAddress: address(0),
             adminAddress: address(0),
-            safeFactoryAddress: SAFE_FACTORY,
-            safeSingletonAddress: SAFE_SINGLETON
+            safeFactoryAddress: address(safeFactory)
         });
 
         deployScript.run(deployer, cfg);
@@ -205,5 +206,43 @@ contract DeployTest is Test {
         ProphetCTFExchange exchange = ProphetCTFExchange(deployScript.deployedExchange());
         assertTrue(exchange.isOperator(operator));
         assertTrue(exchange.isAdmin(admin));
+    }
+
+    // ── Safe address derivation ──────────────────────────────────────
+
+    function test_ExchangeGetSafeAddressReturnsCorrectAddress() public {
+        deployScript.run(deployer, _emptyConfig());
+
+        ProphetCTFExchange exchange = ProphetCTFExchange(deployScript.deployedExchange());
+
+        address eoa1 = makeAddr("eoa1");
+        address eoa2 = makeAddr("eoa2");
+
+        address safe1 = exchange.getSafeAddress(eoa1);
+        address safe2 = exchange.getSafeAddress(eoa2);
+
+        // Derived addresses are non-zero
+        assertTrue(safe1 != address(0), "Safe address for eoa1 should be non-zero");
+        assertTrue(safe2 != address(0), "Safe address for eoa2 should be non-zero");
+
+        // Different EOAs produce different Safe addresses
+        assertTrue(safe1 != safe2, "Different EOAs should produce different Safe addresses");
+
+        // Same EOA always produces the same Safe address (deterministic)
+        assertEq(exchange.getSafeAddress(eoa1), safe1, "getSafeAddress should be deterministic");
+    }
+
+    function test_ExchangeSafeFactoryIsSet() public {
+        deployScript.run(deployer, _emptyConfig());
+
+        ProphetCTFExchange exchange = ProphetCTFExchange(deployScript.deployedExchange());
+        assertEq(exchange.getSafeFactory(), address(safeFactory), "safeFactory should be the Poly factory");
+    }
+
+    function test_ExchangeProxyFactoryIsZero() public {
+        deployScript.run(deployer, _emptyConfig());
+
+        ProphetCTFExchange exchange = ProphetCTFExchange(deployScript.deployedExchange());
+        assertEq(exchange.getProxyFactory(), address(0), "proxyFactory should be address(0)");
     }
 }

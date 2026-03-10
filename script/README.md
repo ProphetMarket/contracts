@@ -64,5 +64,5 @@ forge script script/Deploy.s.sol \
 - **Idempotency:** Set `DEPLOYED_USDC`, `DEPLOYED_CTF`, `DEPLOYED_RESOLUTION`, or `DEPLOYED_EXCHANGE` env vars to skip already-deployed contracts. Each address is validated via `addr.code.length > 0`.
 - **Signer:** The script calls `vm.startBroadcast()` with no arguments — Foundry resolves the signer from CLI flags (`--account`, `--ledger`, `--sender`, etc.). Use an encrypted keystore or hardware wallet; raw private keys are not supported.
 - **Optional env vars:** `OPERATOR_ADDRESS` (registers a separate operator on the exchange), `ADMIN_ADDRESS` (adds an additional admin on the exchange).
-- **Safe infrastructure:** Uses hardcoded Safe proxy factory and singleton addresses that are the same on Polygon mainnet and Amoy.
+- **Safe infrastructure:** Requires `SAFE_FACTORY_ADDRESS` env var pointing to the Poly SafeProxyFactory deployed by `contracts-poly-safe/`. The exchange reads the singleton address from the factory's `masterCopy()`.
 - **Resolution oracle:** The deployer is set as both owner and initial oracle. The oracle role can be transferred later via `setOracle()`.

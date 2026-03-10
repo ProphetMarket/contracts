@@ -268,13 +268,12 @@ Thin wrapper around the Polymarket CTF Exchange mixins (MIT). The original `CTFE
 
 ## Deployment
 
-> **Prerequisite:** The `contracts-poly-safe/` project must be deployed first. The Exchange constructor requires `SAFE_FACTORY_ADDRESS` and `SAFE_SINGLETON_ADDRESS`, which are outputs of that deployment. See [`contracts-poly-safe/README.md`](../contracts-poly-safe/README.md) for instructions.
+> **Prerequisite:** The `contracts-poly-safe/` project must be deployed first. The Exchange constructor requires `SAFE_FACTORY_ADDRESS`, which is an output of that deployment. The exchange reads the singleton address from the factory's `masterCopy()`. See [`contracts-poly-safe/README.md`](../contracts-poly-safe/README.md) for instructions.
 
-Set the required env vars in `.env.dev` before deploying:
+Set the required env var in `.env.dev` before deploying:
 
 ```shell
-SAFE_FACTORY_ADDRESS=0x...    # From contracts-poly-safe/ deployment
-SAFE_SINGLETON_ADDRESS=0x...  # From contracts-poly-safe/ deployment
+SAFE_FACTORY_ADDRESS=0x...    # Poly SafeProxyFactory from contracts-poly-safe/ deployment
 ```
 
 Then deploy:

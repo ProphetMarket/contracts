@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {AddOperator} from "../script/AddOperator.s.sol";
 import {ProphetCTFExchange} from "../src/ProphetCTFExchange.sol";
 import {Deploy, DeployConfig} from "../script/Deploy.s.sol";
+import {MockPolySafeFactory} from "../test/mocks/MockPolySafeFactory.sol";
 
 contract AddOperatorTest is Test {
     AddOperator public script;
@@ -17,6 +18,8 @@ contract AddOperatorTest is Test {
         deployer = makeAddr("deployer");
         operator = makeAddr("operator");
 
+        MockPolySafeFactory safeFactory = new MockPolySafeFactory(address(0x5afe5afE5afE5afE5afE5aFe5aFe5Afe5Afe5AfE));
+
         // Deploy a fresh exchange via the Deploy script (no env vars needed).
         Deploy deployScript = new Deploy();
         deployScript.run(
@@ -28,8 +31,7 @@ contract AddOperatorTest is Test {
                 deployedExchange: address(0),
                 operatorAddress: address(0),
                 adminAddress: address(0),
-                safeFactoryAddress: address(0xFA),
-                safeSingletonAddress: address(0x5A)
+                safeFactoryAddress: address(safeFactory)
             })
         );
         exchange = ProphetCTFExchange(deployScript.deployedExchange());

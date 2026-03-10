@@ -14,8 +14,9 @@ import {MockConditionalTokens} from "../test/mocks/MockConditionalTokens.sol";
 /// @param deployedExchange    Pre-deployed ProphetCTFExchange (address(0) = deploy fresh)
 /// @param operatorAddress     Register as operator on exchange (address(0) = skip)
 /// @param adminAddress        Register as admin on exchange (address(0) = skip)
-/// @param safeFactoryAddress  Poly SafeProxyFactory address (required for fresh exchange deploy)
-/// @param safeSingletonAddress Safe v1.3 GnosisSafeL2 singleton (required for fresh exchange deploy)
+/// @param safeFactoryAddress  Poly SafeProxyFactory address (required for fresh exchange deploy).
+///                            Passed as _safeFactory (4th constructor arg) for POLY_GNOSIS_SAFE signature validation.
+///                            The exchange reads the singleton via safeFactory.masterCopy().
 struct DeployConfig {
     address deployedUsdc;
     address deployedCtf;
@@ -24,7 +25,6 @@ struct DeployConfig {
     address operatorAddress;
     address adminAddress;
     address safeFactoryAddress;
-    address safeSingletonAddress;
 }
 
 /// @title Deploy
@@ -42,7 +42,6 @@ struct DeployConfig {
 ///
 ///      Required env vars:
 ///        SAFE_FACTORY_ADDRESS   — Poly SafeProxyFactory (deploy via contracts-poly-safe/)
-///        SAFE_SINGLETON_ADDRESS — Safe v1.3 GnosisSafeL2 singleton
 ///
 ///      Optional env vars:
 ///        OPERATOR_ADDRESS    — register a separate operator on the exchange
@@ -53,9 +52,8 @@ struct DeployConfig {
 ///        DEPLOYED_EXCHANGE   — skip ProphetCTFExchange deployment
 contract Deploy is Script {
     // ── Safe infrastructure ────────────────────────────────────────
-    // Poly SafeProxyFactory and Safe v1.3 GnosisSafeL2 singleton.
-    // Deployed by contracts-poly-safe/script/DeployPolySafeFactory.s.sol.
-    // Set via SAFE_FACTORY_ADDRESS and SAFE_SINGLETON_ADDRESS env vars.
+    // Poly SafeProxyFactory deployed by contracts-poly-safe/script/DeployPolySafeFactory.s.sol.
+    // Set via SAFE_FACTORY_ADDRESS env var. The exchange reads the singleton via factory.masterCopy().
 
     // ── Deployed addresses (populated during run()) ─────────────────
     address public deployedUsdc;
@@ -100,8 +98,7 @@ contract Deploy is Script {
             deployedExchange: _envAddress("DEPLOYED_EXCHANGE"),
             operatorAddress: _envAddress("OPERATOR_ADDRESS"),
             adminAddress: _envAddress("ADMIN_ADDRESS"),
-            safeFactoryAddress: _envAddress("SAFE_FACTORY_ADDRESS"),
-            safeSingletonAddress: _envAddress("SAFE_SINGLETON_ADDRESS")
+            safeFactoryAddress: _envAddress("SAFE_FACTORY_ADDRESS")
         });
     }
 
@@ -114,8 +111,7 @@ contract Deploy is Script {
         address usdc = _deployUsdc(deployer, cfg.deployedUsdc);
         address ctf = _deployCtf(cfg.deployedCtf);
         address resolution = _deployResolution(deployer, cfg.deployedResolution);
-        address exchange =
-            _deployExchange(usdc, ctf, cfg.safeFactoryAddress, cfg.safeSingletonAddress, cfg.deployedExchange);
+        address exchange = _deployExchange(usdc, ctf, cfg.safeFactoryAddress, cfg.deployedExchange);
 
         _configureExchange(exchange, cfg.operatorAddress, cfg.adminAddress);
 
@@ -170,7 +166,7 @@ contract Deploy is Script {
         return address(res);
     }
 
-    function _deployExchange(address usdc, address ctf, address safeFactory, address safeSingleton, address existing)
+    function _deployExchange(address usdc, address ctf, address safeFactory, address existing)
         internal
         returns (address)
     {
@@ -180,9 +176,10 @@ contract Deploy is Script {
         }
 
         require(safeFactory != address(0), "DeployConfig.safeFactoryAddress required");
-        require(safeSingleton != address(0), "DeployConfig.safeSingletonAddress required");
 
-        ProphetCTFExchange exchange = new ProphetCTFExchange(usdc, ctf, safeFactory, safeSingleton);
+        // _proxyFactory (3rd arg): address(0) — POLY_PROXY sig type is unused.
+        // _safeFactory (4th arg): Poly SafeProxyFactory — used for POLY_GNOSIS_SAFE sig type.
+        ProphetCTFExchange exchange = new ProphetCTFExchange(usdc, ctf, address(0), safeFactory);
         console.log("[DEPLOYED] ProphetCTFExchange at", address(exchange));
         return address(exchange);
     }
