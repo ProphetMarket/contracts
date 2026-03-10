@@ -13,12 +13,18 @@ contract DeployTest is Test {
 
     address public deployer;
 
+    // Dummy Safe addresses used by tests that manually create a ProphetCTFExchange.
+    // These don't need real bytecode — the exchange constructor stores them but
+    // doesn't call them.
+    address constant SAFE_FACTORY = address(0xFA);
+    address constant SAFE_SINGLETON = address(0x5A);
+
     function setUp() public {
         deployer = makeAddr("deployer");
         deployScript = new Deploy();
     }
 
-    /// @dev Returns a zeroed-out config (fresh deploy, no extra roles).
+    /// @dev Returns a config for fresh deploy with dummy Safe addresses (no extra roles).
     function _emptyConfig() internal pure returns (DeployConfig memory) {
         return DeployConfig({
             deployedUsdc: address(0),
@@ -26,7 +32,9 @@ contract DeployTest is Test {
             deployedResolution: address(0),
             deployedExchange: address(0),
             operatorAddress: address(0),
-            adminAddress: address(0)
+            adminAddress: address(0),
+            safeFactoryAddress: SAFE_FACTORY,
+            safeSingletonAddress: SAFE_SINGLETON
         });
     }
 
@@ -117,9 +125,8 @@ contract DeployTest is Test {
         vm.startPrank(deployer);
         TestUSDC usdc = new TestUSDC(deployer);
         MockConditionalTokens ctf = new MockConditionalTokens();
-        ProphetCTFExchange preExchange = new ProphetCTFExchange(
-            address(usdc), address(ctf), deployScript.SAFE_PROXY_FACTORY(), deployScript.SAFE_L2_SINGLETON()
-        );
+        ProphetCTFExchange preExchange =
+            new ProphetCTFExchange(address(usdc), address(ctf), SAFE_FACTORY, SAFE_SINGLETON);
         vm.stopPrank();
 
         DeployConfig memory cfg = _emptyConfig();
@@ -137,9 +144,7 @@ contract DeployTest is Test {
         TestUSDC usdc = new TestUSDC(deployer);
         MockConditionalTokens ctf = new MockConditionalTokens();
         Resolution res = new Resolution(deployer, deployer);
-        ProphetCTFExchange exchange = new ProphetCTFExchange(
-            address(usdc), address(ctf), deployScript.SAFE_PROXY_FACTORY(), deployScript.SAFE_L2_SINGLETON()
-        );
+        ProphetCTFExchange exchange = new ProphetCTFExchange(address(usdc), address(ctf), SAFE_FACTORY, SAFE_SINGLETON);
         vm.stopPrank();
 
         DeployConfig memory cfg = DeployConfig({
@@ -148,7 +153,9 @@ contract DeployTest is Test {
             deployedResolution: address(res),
             deployedExchange: address(exchange),
             operatorAddress: address(0),
-            adminAddress: address(0)
+            adminAddress: address(0),
+            safeFactoryAddress: SAFE_FACTORY,
+            safeSingletonAddress: SAFE_SINGLETON
         });
 
         deployScript.run(deployer, cfg);
@@ -198,12 +205,5 @@ contract DeployTest is Test {
         ProphetCTFExchange exchange = ProphetCTFExchange(deployScript.deployedExchange());
         assertTrue(exchange.isOperator(operator));
         assertTrue(exchange.isAdmin(admin));
-    }
-
-    // ── Constants ───────────────────────────────────────────────────
-
-    function test_SafeFactoryAddressesAreCorrect() public view {
-        assertEq(deployScript.SAFE_PROXY_FACTORY(), 0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67);
-        assertEq(deployScript.SAFE_L2_SINGLETON(), 0x29fcB43b46531BcA003ddC8FCB67FFE91900C762);
     }
 }

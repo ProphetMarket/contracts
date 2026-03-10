@@ -27,7 +27,9 @@ contract AddOperatorTest is Test {
                 deployedResolution: address(0),
                 deployedExchange: address(0),
                 operatorAddress: address(0),
-                adminAddress: address(0)
+                adminAddress: address(0),
+                safeFactoryAddress: address(0xFA),
+                safeSingletonAddress: address(0x5A)
             })
         );
         exchange = ProphetCTFExchange(deployScript.deployedExchange());
