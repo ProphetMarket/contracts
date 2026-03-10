@@ -6,4 +6,4 @@
 	url = https://github.com/OpenZeppelin/openzeppelin-contracts
 [submodule "lib/ctf-exchange"]
 	path = lib/ctf-exchange
-	url = https://github.com/Polymarket/ctf-exchange
+	url = https://github.com/ProphetMarket/ctf-exchange.git
