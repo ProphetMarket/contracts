@@ -266,6 +266,27 @@ Thin wrapper around the Polymarket CTF Exchange mixins (MIT). The original `CTFE
 | `FaucetAmountExceedsMax(uint256 requested, uint256 max)` | `amount > FAUCET_MAX_AMOUNT` |
 | `FaucetCooldownActive(uint256 availableAt)` | Caller's cooldown has not elapsed |
 
+## Deployment
+
+> **Prerequisite:** The `contracts-poly-safe/` project must be deployed first. The Exchange constructor requires `SAFE_FACTORY_ADDRESS` and `SAFE_SINGLETON_ADDRESS`, which are outputs of that deployment. See [`contracts-poly-safe/README.md`](../contracts-poly-safe/README.md) for instructions.
+
+Set the required env vars in `.env.dev` before deploying:
+
+```shell
+SAFE_FACTORY_ADDRESS=0x...    # From contracts-poly-safe/ deployment
+SAFE_SINGLETON_ADDRESS=0x...  # From contracts-poly-safe/ deployment
+```
+
+Then deploy:
+
+```shell
+forge script script/Deploy.s.sol \
+  --rpc-url $RPC_URL \
+  --broadcast \
+  --account prophet-deployer \
+  --sender <DEPLOYER_ADDR>
+```
+
 ## Commands
 
 ```bash
