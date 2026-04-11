@@ -1,4 +1,7 @@
 {
+  "lib/ctf-exchange": {
+    "rev": "d1ad8002371bfc0ea4b06e310e0e490dba544907"
+  },
   "lib/forge-std": {
     "tag": {
       "name": "v1.15.0",

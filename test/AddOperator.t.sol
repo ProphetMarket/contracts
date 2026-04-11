@@ -31,6 +31,7 @@ contract AddOperatorTest is Test {
                 deployedExchange: address(0),
                 operatorAddress: address(0),
                 adminAddress: address(0),
+                oracleAddress: address(0),
                 safeFactoryAddress: address(safeFactory)
             })
         );

@@ -14,6 +14,9 @@ import {MockConditionalTokens} from "../test/mocks/MockConditionalTokens.sol";
 /// @param deployedExchange    Pre-deployed ProphetCTFExchange (address(0) = deploy fresh)
 /// @param operatorAddress     Register as operator on exchange (address(0) = skip)
 /// @param adminAddress        Register as admin on exchange (address(0) = skip)
+/// @param oracleAddress       Set as the exchange oracle (address(0) = skip).
+///                            The oracle is authorized to call `registerToken` and should
+///                            match the oracle configured on Resolution.sol.
 /// @param safeFactoryAddress  Poly SafeProxyFactory address (required for fresh exchange deploy).
 ///                            Passed as _safeFactory (4th constructor arg) for POLY_GNOSIS_SAFE signature validation.
 ///                            The exchange reads the singleton via safeFactory.masterCopy().
@@ -24,6 +27,7 @@ struct DeployConfig {
     address deployedExchange;
     address operatorAddress;
     address adminAddress;
+    address oracleAddress;
     address safeFactoryAddress;
 }
 
@@ -46,6 +50,8 @@ struct DeployConfig {
 ///      Optional env vars:
 ///        OPERATOR_ADDRESS    — register a separate operator on the exchange
 ///        ADMIN_ADDRESS       — transfer exchange admin to this address (deployer remains admin too)
+///        ORACLE_ADDRESS      — set as the exchange oracle (authorized to call registerToken).
+///                              Should match the oracle configured on Resolution.sol.
 ///        DEPLOYED_USDC       — skip TestUSDC deployment
 ///        DEPLOYED_CTF        — skip MockConditionalTokens deployment
 ///        DEPLOYED_RESOLUTION — skip Resolution deployment
@@ -98,6 +104,7 @@ contract Deploy is Script {
             deployedExchange: _envAddress("DEPLOYED_EXCHANGE"),
             operatorAddress: _envAddress("OPERATOR_ADDRESS"),
             adminAddress: _envAddress("ADMIN_ADDRESS"),
+            oracleAddress: _envAddress("ORACLE_ADDRESS"),
             safeFactoryAddress: _envAddress("SAFE_FACTORY_ADDRESS")
         });
     }
@@ -113,7 +120,7 @@ contract Deploy is Script {
         address resolution = _deployResolution(deployer, cfg.deployedResolution);
         address exchange = _deployExchange(usdc, ctf, cfg.safeFactoryAddress, cfg.deployedExchange);
 
-        _configureExchange(exchange, cfg.operatorAddress, cfg.adminAddress);
+        _configureExchange(exchange, cfg.operatorAddress, cfg.adminAddress, cfg.oracleAddress);
 
         // Persist addresses so they're readable by callers / tests.
         deployedUsdc = usdc;
@@ -186,7 +193,9 @@ contract Deploy is Script {
 
     // ── Post-deployment configuration ───────────────────────────────
 
-    function _configureExchange(address exchange, address operatorAddr, address adminAddr) internal {
+    function _configureExchange(address exchange, address operatorAddr, address adminAddr, address oracleAddr)
+        internal
+    {
         ProphetCTFExchange ex = ProphetCTFExchange(exchange);
 
         if (operatorAddr != address(0) && !ex.isOperator(operatorAddr)) {
@@ -197,6 +206,11 @@ contract Deploy is Script {
         if (adminAddr != address(0) && !ex.isAdmin(adminAddr)) {
             ex.addAdmin(adminAddr);
             console.log("[CONFIG] Added admin:", adminAddr);
+        }
+
+        if (oracleAddr != address(0) && ex.oracle() != oracleAddr) {
+            ex.setOracle(oracleAddr);
+            console.log("[CONFIG] Set oracle:", oracleAddr);
         }
     }
 

@@ -33,6 +33,7 @@ contract DeployTest is Test {
             deployedExchange: address(0),
             operatorAddress: address(0),
             adminAddress: address(0),
+            oracleAddress: address(0),
             safeFactoryAddress: address(safeFactory)
         });
     }
@@ -156,6 +157,7 @@ contract DeployTest is Test {
             deployedExchange: address(exchange),
             operatorAddress: address(0),
             adminAddress: address(0),
+            oracleAddress: address(0),
             safeFactoryAddress: address(safeFactory)
         });
 
@@ -206,6 +208,18 @@ contract DeployTest is Test {
         ProphetCTFExchange exchange = ProphetCTFExchange(deployScript.deployedExchange());
         assertTrue(exchange.isOperator(operator));
         assertTrue(exchange.isAdmin(admin));
+    }
+
+    function test_SetsExchangeOracle() public {
+        address oracleEoa = address(0x0BAD);
+
+        DeployConfig memory cfg = _emptyConfig();
+        cfg.oracleAddress = oracleEoa;
+
+        deployScript.run(deployer, cfg);
+
+        ProphetCTFExchange exchange = ProphetCTFExchange(deployScript.deployedExchange());
+        assertEq(exchange.oracle(), oracleEoa);
     }
 
     // ── Safe address derivation ──────────────────────────────────────
