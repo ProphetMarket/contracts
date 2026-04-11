@@ -58,7 +58,8 @@ contract Resolution is Ownable {
 
     /// @notice Record payouts for a conditionId. Callable only by the oracle.
     /// @param conditionId The condition identifier (from CTF prepareCondition).
-    /// @param payouts Array of exactly 2 values, each 0 or 1, with exactly one winner.
+    /// @param payouts Array of exactly 2 values. Allowed vectors:
+    ///                [1,0] (YES wins), [0,1] (NO wins), or [1,1] (market cancelled — 50/50 split).
     /// @param ipfsCid IPFS content identifier for resolution reasoning (may be empty).
     function reportPayouts(bytes32 conditionId, uint256[] calldata payouts, string calldata ipfsCid)
         external
@@ -116,8 +117,11 @@ contract Resolution is Ownable {
 
     // ── Internal ─────────────────────────────────────────────────────
 
-    /// @dev Validates that exactly one payout is 1 and the other is 0.
+    /// @dev Validates the payout vector. Accepts [1,0] (YES wins), [0,1] (NO wins),
+    ///      and [1,1] (cancellation — the Gnosis CTF redeems each token at $0.50 under
+    ///      this vector, splitting collateral 50/50 across all holders). Rejects [0,0]
+    ///      which would lock collateral permanently.
     function _validPayouts(uint256 a, uint256 b) private pure returns (bool) {
-        return (a == 1 && b == 0) || (a == 0 && b == 1);
+        return (a == 1 && b == 0) || (a == 0 && b == 1) || (a == 1 && b == 1);
     }
 }

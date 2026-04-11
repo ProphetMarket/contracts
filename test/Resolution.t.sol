@@ -37,6 +37,13 @@ contract ResolutionTest is Test {
         return p;
     }
 
+    function _cancelled() internal pure returns (uint256[] memory) {
+        uint256[] memory p = new uint256[](2);
+        p[0] = 1;
+        p[1] = 1;
+        return p;
+    }
+
     // ── Deployment ───────────────────────────────────────────────────
 
     function test_Owner() public view {
@@ -181,14 +188,18 @@ contract ResolutionTest is Test {
         resolution.reportPayouts(CONDITION_A, p, SAMPLE_CID);
     }
 
-    function test_ReportPayoutsRevertsBothOne() public {
-        uint256[] memory p = new uint256[](2);
-        p[0] = 1;
-        p[1] = 1;
-
+    function test_ReportPayoutsAcceptsBothOneForCancellation() public {
         vm.prank(oracle);
-        vm.expectRevert(Resolution.InvalidPayoutValues.selector);
-        resolution.reportPayouts(CONDITION_A, p, SAMPLE_CID);
+        vm.expectEmit(true, false, false, true);
+        emit Resolution.PayoutsReported(CONDITION_A, _cancelled(), SAMPLE_CID);
+        resolution.reportPayouts(CONDITION_A, _cancelled(), SAMPLE_CID);
+
+        assertTrue(resolution.isReported(CONDITION_A));
+        uint256[] memory p = resolution.getPayouts(CONDITION_A);
+        assertEq(p.length, 2);
+        assertEq(p[0], 1);
+        assertEq(p[1], 1);
+        assertEq(resolution.getIpfsCid(CONDITION_A), SAMPLE_CID);
     }
 
     function test_ReportPayoutsRevertsInvalidValues() public {
@@ -297,7 +308,7 @@ contract ResolutionTest is Test {
     }
 
     function testFuzz_ReportPayoutsRevertsInvalidValues(uint256 a, uint256 b) public {
-        vm.assume(!((a == 1 && b == 0) || (a == 0 && b == 1)));
+        vm.assume(!((a == 1 && b == 0) || (a == 0 && b == 1) || (a == 1 && b == 1)));
 
         uint256[] memory p = new uint256[](2);
         p[0] = a;
