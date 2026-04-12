@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import {Test} from "forge-std/Test.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Resolution} from "../src/Resolution.sol";
 
 contract ResolutionTest is Test {
@@ -255,6 +256,42 @@ contract ResolutionTest is Test {
         vm.prank(owner);
         vm.expectRevert(Resolution.ZeroAddress.selector);
         resolution.setOracle(address(0));
+    }
+
+    // ── transferOwnership (two-step) ────────────────────────────────
+
+    function test_TransferOwnershipSetsPendingOwner() public {
+        vm.prank(owner);
+        resolution.transferOwnership(alice);
+
+        assertEq(resolution.pendingOwner(), alice);
+        assertEq(resolution.owner(), owner);
+    }
+
+    function test_AcceptOwnershipCompletes() public {
+        vm.prank(owner);
+        resolution.transferOwnership(alice);
+
+        vm.prank(alice);
+        resolution.acceptOwnership();
+
+        assertEq(resolution.owner(), alice);
+        assertEq(resolution.pendingOwner(), address(0));
+    }
+
+    function test_AcceptOwnershipRevertsForNonPending() public {
+        vm.prank(owner);
+        resolution.transferOwnership(alice);
+
+        vm.prank(bob);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, bob));
+        resolution.acceptOwnership();
+    }
+
+    function test_TransferOwnershipRevertsForNonOwner() public {
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
+        resolution.transferOwnership(bob);
     }
 
     // ── renounceOwnership ──────────────────────────────────────────

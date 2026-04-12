@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 
 /// @title Resolution
 /// @notice Stores AI oracle payout reports for Prophet prediction markets.
 /// @dev The oracle role reports payouts per conditionId. Admin (owner) can transfer the oracle role.
-contract Resolution is Ownable {
+contract Resolution is Ownable2Step {
     /// @notice The address authorized to report payouts.
     address public oracle;
 
