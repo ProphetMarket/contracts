@@ -7,6 +7,7 @@ import {Order, Side, SignatureType} from "exchange/libraries/OrderStructs.sol";
 import {IAuthEE} from "exchange/interfaces/IAuth.sol";
 import {ITradingEE} from "exchange/interfaces/ITrading.sol";
 import {IPausableEE} from "exchange/interfaces/IPausable.sol";
+import {IRegistryEE} from "exchange/interfaces/IRegistry.sol";
 
 import {ProphetCTFExchange} from "../src/ProphetCTFExchange.sol";
 import {TestUSDC} from "../src/TestUSDC.sol";
@@ -442,6 +443,37 @@ contract CTFExchangeTest is Test {
         vm.prank(oracleEoa);
         vm.expectRevert(IAuthEE.NotAdmin.selector);
         exchange.unregisterToken(yesTokenId, noTokenId);
+    }
+
+    function test_UnregisterToken_RevertsWhenComplementMismatch() public {
+        // Passing a complement that doesn't match the stored pair should revert.
+        // This prevents accidentally deleting an unrelated market's registry entry.
+        uint256 bogusComplement = 999999;
+        vm.prank(admin);
+        vm.expectRevert(IRegistryEE.InvalidComplement.selector);
+        exchange.unregisterToken(yesTokenId, bogusComplement);
+
+        // Verify the original pair is still registered (nothing was deleted).
+        assertEq(exchange.getConditionId(yesTokenId), conditionId);
+        assertEq(exchange.getConditionId(noTokenId), conditionId);
+    }
+
+    function test_UnregisterToken_RevertsWhenTokenNotRegistered() public {
+        // Trying to unregister a token that was never registered should revert.
+        uint256 unregisteredToken = 123456;
+        vm.prank(admin);
+        vm.expectRevert(IRegistryEE.InvalidTokenId.selector);
+        exchange.unregisterToken(unregisteredToken, 654321);
+    }
+
+    function test_UnregisterToken_WorksFromEitherDirection() public {
+        // Should work when passing the pair as (noTokenId, yesTokenId) too,
+        // since each token stores its complement.
+        vm.prank(admin);
+        exchange.unregisterToken(noTokenId, yesTokenId);
+
+        assertEq(exchange.getConditionId(yesTokenId), bytes32(0));
+        assertEq(exchange.getConditionId(noTokenId), bytes32(0));
     }
 
     // Events mirrored from ProphetCTFExchange for expectEmit matching.

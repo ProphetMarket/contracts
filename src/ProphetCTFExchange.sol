@@ -125,7 +125,12 @@ contract ProphetCTFExchange is
     ///      this there is no way to recover from an edge case (e.g. a condition that
     ///      was prepared incorrectly in the CTF itself). Both directions of the
     ///      registry mapping are cleared so the pair can be re-registered.
+    ///      The caller must provide both token IDs. The complement is validated against
+    ///      storage — if it doesn't match, the call reverts. This acts as a double-check:
+    ///      the admin must prove they know the exact pair they're deleting.
     function unregisterToken(uint256 token, uint256 complement) external onlyAdmin {
+        if (registry[token].complement == 0) revert InvalidTokenId();
+        if (registry[token].complement != complement) revert InvalidComplement();
         bytes32 conditionId = registry[token].conditionId;
         delete registry[token];
         delete registry[complement];
