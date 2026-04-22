@@ -393,6 +393,22 @@ contract CTFExchangeTest is Test {
         exchange.registerToken(uint256(12345), uint256(67890), conditionId2);
     }
 
+    function test_RegisterToken_RevertsWhenConditionNotPrepared() public {
+        // Compute token IDs for a condition that was never prepared in the CTF.
+        // getConditionId / getCollectionId / getPositionId are pure math and return
+        // values regardless of preparation — the new existence check must catch this.
+        bytes32 fakeQuestion = keccak256("phantom condition");
+        bytes32 fakeConditionId = ctf.getConditionId(admin, fakeQuestion, 2);
+        bytes32 yesCollection = ctf.getCollectionId(bytes32(0), fakeConditionId, 1);
+        bytes32 noCollection = ctf.getCollectionId(bytes32(0), fakeConditionId, 2);
+        uint256 fakeYes = ctf.getPositionId(IERC20(address(usdc)), yesCollection);
+        uint256 fakeNo = ctf.getPositionId(IERC20(address(usdc)), noCollection);
+
+        vm.prank(oracleEoa);
+        vm.expectRevert(ProphetCTFExchange.ConditionNotPrepared.selector);
+        exchange.registerToken(fakeYes, fakeNo, fakeConditionId);
+    }
+
     // ── setOracle ─────────────────────────────────────────────────
 
     function test_SetOracle_AdminCanUpdate() public {

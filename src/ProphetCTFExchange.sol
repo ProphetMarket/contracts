@@ -45,6 +45,7 @@ contract ProphetCTFExchange is
 
     error NotAdminOrOracle();
     error TokenConditionMismatch();
+    error ConditionNotPrepared();
     error ZeroAddress();
 
     event OracleUpdated(address indexed previousOracle, address indexed newOracle);
@@ -137,14 +138,16 @@ contract ProphetCTFExchange is
         emit TokenUnregistered(token, complement, conditionId);
     }
 
-    /// @dev Validates that the token pair actually corresponds to the conditionId
-    ///      by reconstructing the expected position IDs from the CTF contract.
-    ///      Requires the condition to have been prepared via `prepareCondition`;
-    ///      otherwise `getCollectionId` will return a value that does not match
-    ///      any real position and validation will revert.
+    /// @dev Validates that the condition exists in the CTF (was prepared as a binary
+    ///      market) and that the token pair corresponds to the conditionId by
+    ///      reconstructing the expected position IDs from the CTF contract.
     function _validateTokenCondition(uint256 token, uint256 complement, bytes32 conditionId) internal view {
         IConditionalTokens ctfContract = IConditionalTokens(ctf);
         IERC20 collateralToken = IERC20(collateral);
+
+        // Verify the condition was prepared in the CTF with exactly 2 outcome slots (H-05).
+        // getOutcomeSlotCount returns 0 for conditions that were never prepared.
+        if (ctfContract.getOutcomeSlotCount(conditionId) != 2) revert ConditionNotPrepared();
 
         bytes32 collectionYes = ctfContract.getCollectionId(bytes32(0), conditionId, 1);
         bytes32 collectionNo = ctfContract.getCollectionId(bytes32(0), conditionId, 2);
