@@ -492,6 +492,24 @@ contract CTFExchangeTest is Test {
         assertEq(exchange.getConditionId(noTokenId), bytes32(0));
     }
 
+    // ── L-04: NatSpec accuracy — unprepared conditions revert ────
+
+    function test_ValidateTokenCondition_RejectsUnpreparedCondition() public {
+        bytes32 unpreparedQuestion = keccak256("never prepared");
+        bytes32 unpreparedConditionId = ctf.getConditionId(admin, unpreparedQuestion, 2);
+
+        bytes32 yesCol = ctf.getCollectionId(bytes32(0), unpreparedConditionId, 1);
+        bytes32 noCol = ctf.getCollectionId(bytes32(0), unpreparedConditionId, 2);
+        uint256 yesId = ctf.getPositionId(IERC20(address(usdc)), yesCol);
+        uint256 noId = ctf.getPositionId(IERC20(address(usdc)), noCol);
+
+        // Token IDs are mathematically valid, but the condition was never prepared.
+        // The getOutcomeSlotCount check must catch this.
+        vm.prank(admin);
+        vm.expectRevert(ProphetCTFExchange.ConditionNotPrepared.selector);
+        exchange.registerToken(yesId, noId, unpreparedConditionId);
+    }
+
     // ── M-10: constructor zero-address checks ────────────────────
 
     function test_Constructor_RevertsOnZeroCollateral() public {

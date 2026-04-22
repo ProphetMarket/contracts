@@ -147,6 +147,10 @@ contract ProphetCTFExchange is
     /// @dev Validates that the condition exists in the CTF (was prepared as a binary
     ///      market) and that the token pair corresponds to the conditionId by
     ///      reconstructing the expected position IDs from the CTF contract.
+    ///      IMPORTANT: getCollectionId / getPositionId are pure math functions that
+    ///      return deterministic hashes regardless of whether prepareCondition was called.
+    ///      The getOutcomeSlotCount check is therefore essential — it is the only guard
+    ///      that rejects phantom (unprepared) conditions.
     function _validateTokenCondition(uint256 token, uint256 complement, bytes32 conditionId) internal view {
         IConditionalTokens ctfContract = IConditionalTokens(ctf);
         IERC20 collateralToken = IERC20(collateral);
