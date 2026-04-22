@@ -52,9 +52,15 @@ contract ProphetCTFExchange is
     event TokenUnregistered(uint256 indexed token0, uint256 indexed token1, bytes32 indexed conditionId);
 
     constructor(address _collateral, address _ctf, address _proxyFactory, address _safeFactory)
-        Assets(_collateral, _ctf)
+        Assets(_requireNonZero(_collateral), _requireNonZero(_ctf))
         Signatures(_proxyFactory, _safeFactory)
     {}
+
+    /// @dev Validates a constructor argument is non-zero before passing it to parent constructors.
+    function _requireNonZero(address addr) private pure returns (address) {
+        if (addr == address(0)) revert ZeroAddress();
+        return addr;
+    }
 
     // ── Pause ─────────────────────────────────────────────────────
 
