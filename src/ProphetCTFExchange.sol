@@ -115,7 +115,7 @@ contract ProphetCTFExchange is
     /// @dev Callable by admin or oracle. Inputs are validated on-chain against the
     ///      CTF contract: a compromised oracle cannot bind a valid token pair to the
     ///      wrong conditionId — the math won't check out.
-    function registerToken(uint256 token, uint256 complement, bytes32 conditionId) external {
+    function registerToken(uint256 token, uint256 complement, bytes32 conditionId) external notPaused {
         if (admins[msg.sender] != 1 && msg.sender != oracle) revert NotAdminOrOracle();
         _validateTokenCondition(token, complement, conditionId);
         _registerToken(token, complement, conditionId);

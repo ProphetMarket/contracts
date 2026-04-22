@@ -492,6 +492,38 @@ contract CTFExchangeTest is Test {
         assertEq(exchange.getConditionId(noTokenId), bytes32(0));
     }
 
+    // ── M-06: registerToken blocked when paused ───────────────────
+
+    function test_RegisterToken_RevertsWhenPaused() public {
+        (bytes32 conditionId2, uint256 yesTokenId2, uint256 noTokenId2) =
+            _prepareCondition(keccak256("Will ETH reach $20k in 2026?"));
+
+        vm.prank(admin);
+        exchange.pauseTrading();
+
+        vm.prank(oracleEoa);
+        vm.expectRevert(IPausableEE.Paused.selector);
+        exchange.registerToken(yesTokenId2, noTokenId2, conditionId2);
+
+        vm.prank(admin);
+        vm.expectRevert(IPausableEE.Paused.selector);
+        exchange.registerToken(yesTokenId2, noTokenId2, conditionId2);
+    }
+
+    function test_RegisterToken_WorksAfterUnpause() public {
+        (bytes32 conditionId2, uint256 yesTokenId2, uint256 noTokenId2) =
+            _prepareCondition(keccak256("Will ETH reach $20k in 2026?"));
+
+        vm.startPrank(admin);
+        exchange.pauseTrading();
+        exchange.unpauseTrading();
+        vm.stopPrank();
+
+        vm.prank(oracleEoa);
+        exchange.registerToken(yesTokenId2, noTokenId2, conditionId2);
+        assertEq(exchange.getConditionId(yesTokenId2), conditionId2);
+    }
+
     // Events mirrored from ProphetCTFExchange for expectEmit matching.
     event OracleUpdated(address indexed previousOracle, address indexed newOracle);
     event TokenUnregistered(uint256 indexed token0, uint256 indexed token1, bytes32 indexed conditionId);
