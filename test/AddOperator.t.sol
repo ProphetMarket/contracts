@@ -32,7 +32,8 @@ contract AddOperatorTest is Test {
                 operatorAddress: address(0),
                 adminAddress: address(0),
                 oracleAddress: address(0),
-                safeFactoryAddress: address(safeFactory)
+                safeFactoryAddress: address(safeFactory),
+                cooldownPeriod: 12 hours
             })
         );
         exchange = ProphetCTFExchange(deployScript.deployedExchange());

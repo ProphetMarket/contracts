@@ -34,7 +34,8 @@ contract DeployTest is Test {
             operatorAddress: address(0),
             adminAddress: address(0),
             oracleAddress: address(0),
-            safeFactoryAddress: address(safeFactory)
+            safeFactoryAddress: address(safeFactory),
+            cooldownPeriod: 12 hours
         });
     }
 
@@ -62,6 +63,8 @@ contract DeployTest is Test {
         Resolution res = Resolution(deployScript.deployedResolution());
         assertEq(res.owner(), deployer);
         assertEq(res.oracle(), deployer);
+        assertEq(address(res.ctf()), deployScript.deployedCtf());
+        assertEq(res.cooldownPeriod(), 12 hours);
     }
 
     function test_DeployedExchangeHasDeployerAsAdminAndOperator() public {
@@ -113,7 +116,8 @@ contract DeployTest is Test {
     }
 
     function test_SkipsAlreadyDeployedResolution() public {
-        Resolution preRes = new Resolution(deployer, deployer);
+        MockConditionalTokens preCtf = new MockConditionalTokens();
+        Resolution preRes = new Resolution(deployer, deployer, address(preCtf), 12 hours);
 
         DeployConfig memory cfg = _emptyConfig();
         cfg.deployedResolution = address(preRes);
@@ -145,7 +149,7 @@ contract DeployTest is Test {
         vm.startPrank(deployer);
         TestUSDC usdc = new TestUSDC(deployer);
         MockConditionalTokens ctf = new MockConditionalTokens();
-        Resolution res = new Resolution(deployer, deployer);
+        Resolution res = new Resolution(deployer, deployer, address(ctf), 12 hours);
         ProphetCTFExchange exchange =
             new ProphetCTFExchange(address(usdc), address(ctf), address(0), address(safeFactory));
         vm.stopPrank();
@@ -158,7 +162,8 @@ contract DeployTest is Test {
             operatorAddress: address(0),
             adminAddress: address(0),
             oracleAddress: address(0),
-            safeFactoryAddress: address(safeFactory)
+            safeFactoryAddress: address(safeFactory),
+            cooldownPeriod: 12 hours
         });
 
         deployScript.run(deployer, cfg);

@@ -20,6 +20,8 @@ import {MockConditionalTokens} from "../test/mocks/MockConditionalTokens.sol";
 /// @param safeFactoryAddress  Poly SafeProxyFactory address (required for fresh exchange deploy).
 ///                            Passed as _safeFactory (4th constructor arg) for POLY_GNOSIS_SAFE signature validation.
 ///                            The exchange reads the singleton via safeFactory.masterCopy().
+/// @param cooldownPeriod      Resolution cooldown in seconds (0 = use default 12 hours).
+///                            Must be in [1 hour, 72 hours] when non-zero.
 struct DeployConfig {
     address deployedUsdc;
     address deployedCtf;
@@ -29,6 +31,7 @@ struct DeployConfig {
     address adminAddress;
     address oracleAddress;
     address safeFactoryAddress;
+    uint256 cooldownPeriod;
 }
 
 /// @title Deploy
@@ -105,7 +108,8 @@ contract Deploy is Script {
             operatorAddress: _envAddress("OPERATOR_ADDRESS"),
             adminAddress: _envAddress("ADMIN_ADDRESS"),
             oracleAddress: _envAddress("ORACLE_ADDRESS"),
-            safeFactoryAddress: _envAddress("SAFE_FACTORY_ADDRESS")
+            safeFactoryAddress: _envAddress("SAFE_FACTORY_ADDRESS"),
+            cooldownPeriod: vm.envOr("RESOLUTION_COOLDOWN_SECONDS", uint256(12 hours))
         });
     }
 
@@ -117,7 +121,7 @@ contract Deploy is Script {
 
         address usdc = _deployUsdc(deployer, cfg.deployedUsdc);
         address ctf = _deployCtf(cfg.deployedCtf);
-        address resolution = _deployResolution(deployer, cfg.deployedResolution);
+        address resolution = _deployResolution(deployer, ctf, cfg.deployedResolution, cfg.cooldownPeriod);
         address exchange = _deployExchange(usdc, ctf, cfg.safeFactoryAddress, cfg.deployedExchange);
 
         _configureExchange(exchange, cfg.operatorAddress, cfg.adminAddress, cfg.oracleAddress);
@@ -160,7 +164,10 @@ contract Deploy is Script {
         return address(ctf);
     }
 
-    function _deployResolution(address owner, address existing) internal returns (address) {
+    function _deployResolution(address owner, address ctfAddr, address existing, uint256 cooldownSecs)
+        internal
+        returns (address)
+    {
         if (_isDeployed(existing)) {
             console.log("[SKIP] Resolution already deployed at", existing);
             return existing;
@@ -168,7 +175,7 @@ contract Deploy is Script {
 
         // Deployer serves as both owner and initial oracle.
         // Oracle role can be transferred later via setOracle().
-        Resolution res = new Resolution(owner, owner);
+        Resolution res = new Resolution(owner, owner, ctfAddr, cooldownSecs);
         console.log("[DEPLOYED] Resolution at", address(res));
         return address(res);
     }
