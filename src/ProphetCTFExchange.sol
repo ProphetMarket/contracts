@@ -46,7 +46,6 @@ contract ProphetCTFExchange is
     error NotAdminOrOracle();
     error TokenConditionMismatch();
     error ConditionNotPrepared();
-    error ZeroAddress();
 
     event OracleUpdated(address indexed previousOracle, address indexed newOracle);
     event TokenUnregistered(uint256 indexed token0, uint256 indexed token1, bytes32 indexed conditionId);

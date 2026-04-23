@@ -431,7 +431,7 @@ contract CTFExchangeTest is Test {
 
     function test_SetOracle_RevertsOnZeroAddress() public {
         vm.prank(admin);
-        vm.expectRevert(ProphetCTFExchange.ZeroAddress.selector);
+        vm.expectRevert(IAuthEE.ZeroAddress.selector);
         exchange.setOracle(address(0));
     }
 
@@ -513,33 +513,18 @@ contract CTFExchangeTest is Test {
     // ── M-10: constructor zero-address checks ────────────────────
 
     function test_Constructor_RevertsOnZeroCollateral() public {
-        vm.expectRevert(ProphetCTFExchange.ZeroAddress.selector);
-        new ProphetCTFExchange(
-            address(0),
-            address(ctf),
-            address(0),
-            address(0)
-        );
+        vm.expectRevert(IAuthEE.ZeroAddress.selector);
+        new ProphetCTFExchange(address(0), address(ctf), address(0), address(0));
     }
 
     function test_Constructor_RevertsOnZeroCtf() public {
-        vm.expectRevert(ProphetCTFExchange.ZeroAddress.selector);
-        new ProphetCTFExchange(
-            address(usdc),
-            address(0),
-            address(0),
-            address(0)
-        );
+        vm.expectRevert(IAuthEE.ZeroAddress.selector);
+        new ProphetCTFExchange(address(usdc), address(0), address(0), address(0));
     }
 
     function test_Constructor_RevertsOnBothZero() public {
-        vm.expectRevert(ProphetCTFExchange.ZeroAddress.selector);
-        new ProphetCTFExchange(
-            address(0),
-            address(0),
-            address(0),
-            address(0)
-        );
+        vm.expectRevert(IAuthEE.ZeroAddress.selector);
+        new ProphetCTFExchange(address(0), address(0), address(0), address(0));
     }
 
     // ── M-06: registerToken blocked when paused ───────────────────
