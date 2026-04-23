@@ -8,6 +8,13 @@ import {Resolution} from "../src/Resolution.sol";
 import {ProphetCTFExchange} from "../src/ProphetCTFExchange.sol";
 import {MockConditionalTokens} from "../test/mocks/MockConditionalTokens.sol";
 
+/// @dev Extended interface for the Poly SafeProxyFactory. The exchange only uses
+///      masterCopy(); proxyCreationCode() is added here for the H-03 deployment assertion.
+interface IPolySafeProxyFactory {
+    function masterCopy() external view returns (address);
+    function proxyCreationCode() external pure returns (bytes memory);
+}
+
 /// @param deployedUsdc        Pre-deployed TestUSDC (address(0) = deploy fresh)
 /// @param deployedCtf         Pre-deployed ConditionalTokens (address(0) = deploy fresh)
 /// @param deployedResolution  Pre-deployed Resolution (address(0) = deploy fresh)
@@ -195,7 +202,36 @@ contract Deploy is Script {
         // _safeFactory (4th arg): Poly SafeProxyFactory — used for POLY_GNOSIS_SAFE sig type.
         ProphetCTFExchange exchange = new ProphetCTFExchange(usdc, ctf, address(0), safeFactory);
         console.log("[DEPLOYED] ProphetCTFExchange at", address(exchange));
+
+        _verifyProxyCreationCode(address(exchange), safeFactory);
+
         return address(exchange);
+    }
+
+    /// @dev H-03 deployment assertion: verifies that the hardcoded proxyCreationCode in
+    ///      PolySafeLib matches the live bytecode from the Poly SafeProxyFactory. If they
+    ///      diverge, POLY_GNOSIS_SAFE signature verification will silently fail for every user.
+    ///      See: research/audit-findings-guide.md#h-03
+    function _verifyProxyCreationCode(address exchange, address safeFactory) internal view {
+        IPolySafeProxyFactory factory = IPolySafeProxyFactory(safeFactory);
+
+        // What the exchange derives via PolySafeLib (hardcoded constant)
+        address sentinel = address(0xDEAD);
+        address exchangeDerived = ProphetCTFExchange(exchange).getSafeAddress(sentinel);
+
+        // What the factory would produce via its live proxyCreationCode()
+        address masterCopyAddr = factory.masterCopy();
+        bytes memory creationCode = factory.proxyCreationCode();
+        bytes memory bytecode = abi.encodePacked(creationCode, abi.encode(masterCopyAddr));
+        bytes32 salt = keccak256(abi.encode(sentinel));
+        bytes32 hash = keccak256(abi.encodePacked(bytes1(0xff), safeFactory, salt, keccak256(bytecode)));
+        address factoryDerived = address(uint160(uint256(hash)));
+
+        require(
+            exchangeDerived == factoryDerived,
+            "H-03: PolySafeLib proxyCreationCode diverges from factory -- update the constant before deploying"
+        );
+        console.log("[VERIFIED] PolySafeLib proxyCreationCode matches factory (H-03)");
     }
 
     // ── Post-deployment configuration ───────────────────────────────
