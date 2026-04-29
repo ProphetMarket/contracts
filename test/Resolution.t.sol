@@ -16,8 +16,8 @@ contract ResolutionTest is Test {
     address public alice = address(0x3);
     address public bob = address(0x4);
 
-    bytes32 constant CONDITION_A = keccak256("market-A");
-    bytes32 constant CONDITION_B = keccak256("market-B");
+    bytes32 public CONDITION_A;
+    bytes32 public CONDITION_B;
     bytes32 constant QUESTION_A = keccak256("question-A");
     bytes32 constant QUESTION_B = keccak256("question-B");
     string constant SAMPLE_CID = "QmTestCID1234567890abcdefghijklmnopqrstuvwxyz";
@@ -28,8 +28,12 @@ contract ResolutionTest is Test {
         ctf = new MockConditionalTokens();
         resolution = new Resolution(owner, oracle, address(ctf), DEFAULT_COOLDOWN);
 
+        // Derive conditionIds from the CTF, using Resolution's address as the oracle.
+        // This matches production: conditionId = keccak256(oracle, questionId, 2).
+        CONDITION_A = ctf.getConditionId(address(resolution), QUESTION_A, 2);
+        CONDITION_B = ctf.getConditionId(address(resolution), QUESTION_B, 2);
+
         // Prepare conditions on the CTF so finalizePayouts can forward.
-        // The CTF oracle is Resolution's address (matching production setup).
         ctf.prepareCondition(address(resolution), QUESTION_A, 2);
         ctf.prepareCondition(address(resolution), QUESTION_B, 2);
     }
@@ -233,6 +237,49 @@ contract ResolutionTest is Test {
         vm.prank(oracle);
         vm.expectRevert(Resolution.InvalidPayoutValues.selector);
         resolution.reportPayouts(CONDITION_A, QUESTION_A, p, SAMPLE_CID);
+    }
+
+    /// @dev Supplying a valid conditionId with the wrong questionId should revert,
+    ///      because the CTF derivation keccak256(oracle, questionId, 2) won't match.
+    function test_ReportPayoutsRevertsConditionQuestionIdMismatch() public {
+        bytes32 expectedConditionId = ctf.getConditionId(address(resolution), QUESTION_B, 2);
+
+        vm.prank(oracle);
+        vm.expectRevert(
+            abi.encodeWithSelector(Resolution.ConditionQuestionIdMismatch.selector, CONDITION_A, expectedConditionId)
+        );
+        resolution.reportPayouts(CONDITION_A, QUESTION_B, _yesWins(), SAMPLE_CID);
+    }
+
+    /// @dev Supplying an arbitrary conditionId that was never derived from the given
+    ///      questionId should revert, even if the questionId itself is valid.
+    function test_ReportPayoutsRevertsWrongConditionId() public {
+        bytes32 wrongConditionId = keccak256("totally-wrong");
+        bytes32 expectedConditionId = ctf.getConditionId(address(resolution), QUESTION_A, 2);
+
+        vm.prank(oracle);
+        vm.expectRevert(
+            abi.encodeWithSelector(Resolution.ConditionQuestionIdMismatch.selector, wrongConditionId, expectedConditionId)
+        );
+        resolution.reportPayouts(wrongConditionId, QUESTION_A, _yesWins(), SAMPLE_CID);
+    }
+
+    /// @dev A conditionId prepared on the CTF by a different oracle address should revert,
+    ///      because Resolution can only resolve conditions where it is the CTF oracle.
+    function test_ReportPayoutsRevertsConditionFromDifferentOracle() public {
+        address attacker = address(0xBAD);
+        bytes32 questionId = keccak256("attacker-question");
+        ctf.prepareCondition(attacker, questionId, 2);
+        bytes32 attackerConditionId = ctf.getConditionId(attacker, questionId, 2);
+        bytes32 expectedConditionId = ctf.getConditionId(address(resolution), questionId, 2);
+
+        vm.prank(oracle);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Resolution.ConditionQuestionIdMismatch.selector, attackerConditionId, expectedConditionId
+            )
+        );
+        resolution.reportPayouts(attackerConditionId, questionId, _yesWins(), SAMPLE_CID);
     }
 
     // ── finalizePayouts ─────────────────────────────────────────────
@@ -728,10 +775,13 @@ contract ResolutionTest is Test {
 
     // ── Fuzz ────────────────────────────────────────────────────────
 
-    function testFuzz_ReportAndFinalizeRandomConditionId(bytes32 conditionId) public {
-        // Prepare condition on CTF for this random conditionId's questionId.
-        bytes32 questionId = keccak256(abi.encodePacked(conditionId));
+    function testFuzz_ReportAndFinalizeRandomQuestionId(bytes32 questionId) public {
+        // Skip questionIds already prepared in setUp to avoid ConditionAlreadyPrepared.
+        vm.assume(questionId != QUESTION_A && questionId != QUESTION_B);
+
+        // Derive conditionId from the questionId using Resolution as oracle.
         ctf.prepareCondition(address(resolution), questionId, 2);
+        bytes32 conditionId = ctf.getConditionId(address(resolution), questionId, 2);
 
         _reportAndFinalize(conditionId, questionId, _yesWins(), SAMPLE_CID);
 

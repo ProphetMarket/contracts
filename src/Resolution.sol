@@ -83,6 +83,7 @@ contract Resolution is Ownable2Step, Pausable {
     error NoPendingReport(bytes32 conditionId);
     error CooldownNotElapsed(bytes32 conditionId, uint256 finalizeAfter);
     error ReportAlreadyPending(bytes32 conditionId);
+    error ConditionQuestionIdMismatch(bytes32 conditionId, bytes32 expectedConditionId);
     error CooldownOutOfRange(uint256 value, uint256 min, uint256 max);
 
     // ── Modifiers ───────────────────────────────────────────────────
@@ -130,6 +131,14 @@ contract Resolution is Ownable2Step, Pausable {
         if (_pending[conditionId].exists) revert ReportAlreadyPending(conditionId);
         if (payouts.length != 2) revert InvalidPayoutsLength(payouts.length);
         if (!_validPayouts(payouts[0], payouts[1])) revert InvalidPayoutValues();
+
+        // Verify conditionId was derived from this contract as the CTF oracle.
+        // The Gnosis CTF computes conditionId = keccak256(oracle, questionId, outcomeSlotCount).
+        // Since this contract is the oracle, the expected conditionId must match.
+        bytes32 expectedConditionId = ctf.getConditionId(address(this), questionId, 2);
+        if (conditionId != expectedConditionId) {
+            revert ConditionQuestionIdMismatch(conditionId, expectedConditionId);
+        }
 
         uint256 finalizeAfter = block.timestamp + cooldownPeriod;
 
