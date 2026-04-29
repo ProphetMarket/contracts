@@ -7,6 +7,7 @@ import {Order, Side, SignatureType} from "exchange/libraries/OrderStructs.sol";
 import {ISignaturesEE} from "exchange/interfaces/ISignatures.sol";
 
 import {ProphetCTFExchange} from "../src/ProphetCTFExchange.sol";
+import {Resolution} from "../src/Resolution.sol";
 import {TestUSDC} from "../src/TestUSDC.sol";
 import {MockConditionalTokens} from "./mocks/MockConditionalTokens.sol";
 import {MockPolySafeFactory} from "./mocks/MockPolySafeFactory.sol";
@@ -17,6 +18,7 @@ import {MockPolySafeFactory} from "./mocks/MockPolySafeFactory.sol";
 ///         exchange validates signature + address derivation → matchOrders succeeds.
 contract PolyGnosisSafeMatchTest is Test {
     ProphetCTFExchange public exchange;
+    Resolution public resolution;
     TestUSDC public usdc;
     MockConditionalTokens public ctf;
     MockPolySafeFactory public safeFactory;
@@ -57,6 +59,9 @@ contract PolyGnosisSafeMatchTest is Test {
         usdc = new TestUSDC(admin);
         ctf = new MockConditionalTokens();
 
+        // Deploy Resolution contract (admin=owner, admin=oracle for this test)
+        resolution = new Resolution(admin, admin, address(ctf), 12 hours);
+
         // Deploy mock Safe factory that returns our known masterCopy
         safeFactory = new MockPolySafeFactory(MOCK_SINGLETON);
 
@@ -69,17 +74,18 @@ contract PolyGnosisSafeMatchTest is Test {
         );
 
         exchange.addOperator(operatorAddr);
+        exchange.setResolution(address(resolution));
 
-        // Set up a binary market
-        ctf.prepareCondition(admin, questionId, 2);
-        conditionId = ctf.getConditionId(admin, questionId, 2);
+        // Set up a binary market via Resolution wrapper
+        resolution.prepareCondition(questionId);
+        conditionId = ctf.getConditionId(address(resolution), questionId, 2);
 
         bytes32 yesCollectionId = ctf.getCollectionId(bytes32(0), conditionId, 1);
         bytes32 noCollectionId = ctf.getCollectionId(bytes32(0), conditionId, 2);
         yesTokenId = ctf.getPositionId(IERC20(address(usdc)), yesCollectionId);
         noTokenId = ctf.getPositionId(IERC20(address(usdc)), noCollectionId);
 
-        exchange.registerToken(yesTokenId, noTokenId, conditionId);
+        exchange.registerToken(yesTokenId, noTokenId, conditionId, questionId);
         vm.stopPrank();
 
         // Derive user's Safe address from the exchange's getSafeAddress()

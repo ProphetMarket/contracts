@@ -123,6 +123,34 @@ contract ResolutionTest is Test {
         new Resolution(owner, oracle, address(ctf), 73 hours);
     }
 
+    // ── prepareCondition ──────────────────────────────────────────────
+
+    function test_PrepareConditionCallsCtf() public {
+        bytes32 newQuestion = keccak256("new-market");
+
+        vm.prank(oracle);
+        resolution.prepareCondition(newQuestion);
+
+        // The condition should exist in the CTF with Resolution as oracle.
+        bytes32 newConditionId = ctf.getConditionId(address(resolution), newQuestion, 2);
+        assertEq(ctf.getOutcomeSlotCount(newConditionId), 2);
+    }
+
+    function test_PrepareConditionRevertsForNonOracle() public {
+        vm.prank(alice);
+        vm.expectRevert(Resolution.Unauthorized.selector);
+        resolution.prepareCondition(keccak256("unauthorized"));
+    }
+
+    function test_PrepareConditionRevertsWhenPaused() public {
+        vm.prank(owner);
+        resolution.pause();
+
+        vm.prank(oracle);
+        vm.expectRevert(Pausable.EnforcedPause.selector);
+        resolution.prepareCondition(keccak256("paused-market"));
+    }
+
     // ── reportPayouts (pending state) ───────────────────────────────
 
     function test_ReportPayoutsSetsPendingState() public {
@@ -259,7 +287,9 @@ contract ResolutionTest is Test {
 
         vm.prank(oracle);
         vm.expectRevert(
-            abi.encodeWithSelector(Resolution.ConditionQuestionIdMismatch.selector, wrongConditionId, expectedConditionId)
+            abi.encodeWithSelector(
+                Resolution.ConditionQuestionIdMismatch.selector, wrongConditionId, expectedConditionId
+            )
         );
         resolution.reportPayouts(wrongConditionId, QUESTION_A, _yesWins(), SAMPLE_CID);
     }

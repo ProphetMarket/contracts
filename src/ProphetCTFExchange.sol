@@ -44,11 +44,17 @@ contract ProphetCTFExchange is
     ///         handles the full market lifecycle (register tokens, report payouts).
     address public oracle;
 
+    /// @notice The Resolution contract address. Used to verify that conditions were prepared
+    ///         with Resolution as the CTF oracle.
+    address public resolution;
+
     error NotAdminOrOracle();
     error TokenConditionMismatch();
     error ConditionNotPrepared();
+    error WrongConditionOracle();
 
     event OracleUpdated(address indexed previousOracle, address indexed newOracle);
+    event ResolutionUpdated(address indexed previousResolution, address indexed newResolution);
     event TokenUnregistered(uint256 indexed token0, uint256 indexed token1, bytes32 indexed conditionId);
 
     constructor(address _collateral, address _ctf, address _proxyFactory, address _safeFactory)
@@ -154,15 +160,29 @@ contract ProphetCTFExchange is
         emit OracleUpdated(prev, _oracle);
     }
 
+    /// @notice Set the Resolution contract address used for condition oracle validation.
+    /// @param _resolution The Resolution contract address. Must be non-zero.
+    function setResolution(address _resolution) external onlyAdmin {
+        if (_resolution == address(0)) revert ZeroAddress();
+        address prev = resolution;
+        resolution = _resolution;
+        emit ResolutionUpdated(prev, _resolution);
+    }
+
     // ── Registry ──────────────────────────────────────────────────
 
     /// @notice Register a YES/NO token pair for a prepared CTF condition.
     /// @dev Callable by admin or oracle. Inputs are validated on-chain against the
     ///      CTF contract: a compromised oracle cannot bind a valid token pair to the
     ///      wrong conditionId — the math won't check out.
-    function registerToken(uint256 token, uint256 complement, bytes32 conditionId) external notPaused {
+    /// @param questionId The question identifier used when preparing the condition.
+    ///        Used to verify the condition was prepared with Resolution as the CTF oracle.
+    function registerToken(uint256 token, uint256 complement, bytes32 conditionId, bytes32 questionId)
+        external
+        notPaused
+    {
         if (admins[msg.sender] != 1 && msg.sender != oracle) revert NotAdminOrOracle();
-        _validateTokenCondition(token, complement, conditionId);
+        _validateTokenCondition(token, complement, conditionId, questionId);
         _registerToken(token, complement, conditionId);
     }
 
@@ -190,11 +210,14 @@ contract ProphetCTFExchange is
     ///      return deterministic hashes regardless of whether prepareCondition was called.
     ///      The getOutcomeSlotCount check is therefore essential — it is the only guard
     ///      that rejects phantom (unprepared) conditions.
-    function _validateTokenCondition(uint256 token, uint256 complement, bytes32 conditionId) internal view {
+    function _validateTokenCondition(uint256 token, uint256 complement, bytes32 conditionId, bytes32 questionId)
+        internal
+        view
+    {
         IConditionalTokens ctfContract = IConditionalTokens(ctf);
         IERC20 collateralToken = IERC20(collateral);
 
-        // Verify the condition was prepared in the CTF with exactly 2 outcome slots (H-05).
+        // Verify the condition was prepared in the CTF with exactly 2 outcome slots.
         // getOutcomeSlotCount returns 0 for conditions that were never prepared.
         if (ctfContract.getOutcomeSlotCount(conditionId) != 2) revert ConditionNotPrepared();
 
@@ -208,5 +231,12 @@ contract ProphetCTFExchange is
             (token == expectedYes && complement == expectedNo) || (token == expectedNo && complement == expectedYes);
 
         if (!valid) revert TokenConditionMismatch();
+
+        // Verify the condition was prepared with the Resolution contract as the CTF oracle.
+        // This prevents conditions prepared by an attacker (bypassing Resolution) from
+        // being registered, which would allow resolution without cooldown or admin oversight.
+        // Runtime derivation: conditionId = keccak256(oracle, questionId, outcomeSlotCount).
+        bytes32 expectedId = ctfContract.getConditionId(resolution, questionId, 2);
+        if (conditionId != expectedId) revert WrongConditionOracle();
     }
 }

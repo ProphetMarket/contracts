@@ -10,11 +10,13 @@ import {IPausableEE} from "exchange/interfaces/IPausable.sol";
 import {IRegistryEE} from "exchange/interfaces/IRegistry.sol";
 
 import {ProphetCTFExchange} from "../src/ProphetCTFExchange.sol";
+import {Resolution} from "../src/Resolution.sol";
 import {TestUSDC} from "../src/TestUSDC.sol";
 import {MockConditionalTokens} from "./mocks/MockConditionalTokens.sol";
 
 contract CTFExchangeTest is Test {
     ProphetCTFExchange public exchange;
+    Resolution public resolution;
     TestUSDC public usdc;
     MockConditionalTokens public ctf;
 
@@ -52,6 +54,9 @@ contract CTFExchangeTest is Test {
         usdc = new TestUSDC(admin);
         ctf = new MockConditionalTokens();
 
+        // Deploy Resolution contract (admin=owner, oracleEoa=oracle)
+        resolution = new Resolution(admin, oracleEoa, address(ctf), 12 hours);
+
         // Deploy exchange: admin becomes admin + operator automatically
         exchange = new ProphetCTFExchange(
             address(usdc),
@@ -66,10 +71,14 @@ contract CTFExchangeTest is Test {
         // Set the exchange oracle — authorized to call registerToken
         exchange.setOracle(oracleEoa);
 
-        // Prepare a condition (binary market: YES/NO)
-        address ctfOracle = admin; // admin acts as the CTF-level oracle for test conditions
-        ctf.prepareCondition(ctfOracle, questionId, 2);
-        conditionId = ctf.getConditionId(ctfOracle, questionId, 2);
+        // Set the Resolution contract for condition oracle validation (H-05)
+        exchange.setResolution(address(resolution));
+        vm.stopPrank();
+
+        // Prepare condition via Resolution wrapper (enforces Resolution as CTF oracle)
+        vm.prank(oracleEoa);
+        resolution.prepareCondition(questionId);
+        conditionId = ctf.getConditionId(address(resolution), questionId, 2);
 
         // Compute position token IDs (matching Gnosis CTF spec)
         bytes32 yesCollectionId = ctf.getCollectionId(bytes32(0), conditionId, 1); // indexSet 1 = YES
@@ -78,9 +87,8 @@ contract CTFExchangeTest is Test {
         noTokenId = ctf.getPositionId(IERC20(address(usdc)), noCollectionId);
 
         // Register token pair on exchange
-        exchange.registerToken(yesTokenId, noTokenId, conditionId);
-
-        vm.stopPrank();
+        vm.prank(admin);
+        exchange.registerToken(yesTokenId, noTokenId, conditionId, questionId);
 
         // Fund test actors with USDC
         vm.startPrank(admin);
@@ -343,20 +351,20 @@ contract CTFExchangeTest is Test {
 
     function test_RegisterToken_OperatorRejected() public {
         // Operator no longer has registerToken authority — only admin and oracle.
-        (bytes32 conditionId2, uint256 yesTokenId2, uint256 noTokenId2) =
-            _prepareCondition(keccak256("Will BTC reach $200k in 2026?"));
+        bytes32 question2 = keccak256("Will BTC reach $200k in 2026?");
+        (bytes32 conditionId2, uint256 yesTokenId2, uint256 noTokenId2) = _prepareCondition(question2);
 
         vm.prank(operator);
         vm.expectRevert(ProphetCTFExchange.NotAdminOrOracle.selector);
-        exchange.registerToken(yesTokenId2, noTokenId2, conditionId2);
+        exchange.registerToken(yesTokenId2, noTokenId2, conditionId2, question2);
     }
 
     function test_RegisterToken_OracleCanCall() public {
-        (bytes32 conditionId2, uint256 yesTokenId2, uint256 noTokenId2) =
-            _prepareCondition(keccak256("Will BTC reach $200k in 2026?"));
+        bytes32 question2 = keccak256("Will BTC reach $200k in 2026?");
+        (bytes32 conditionId2, uint256 yesTokenId2, uint256 noTokenId2) = _prepareCondition(question2);
 
         vm.prank(oracleEoa);
-        exchange.registerToken(yesTokenId2, noTokenId2, conditionId2);
+        exchange.registerToken(yesTokenId2, noTokenId2, conditionId2, question2);
 
         assertEq(exchange.getConditionId(yesTokenId2), conditionId2);
         assertEq(exchange.getComplement(yesTokenId2), noTokenId2);
@@ -365,32 +373,33 @@ contract CTFExchangeTest is Test {
 
     function test_RegisterToken_AdminCanCall() public {
         // Admin retains registerToken authority as a safety net.
-        (bytes32 conditionId2, uint256 yesTokenId2, uint256 noTokenId2) =
-            _prepareCondition(keccak256("Will SOL reach $1k in 2026?"));
+        bytes32 question2 = keccak256("Will SOL reach $1k in 2026?");
+        (bytes32 conditionId2, uint256 yesTokenId2, uint256 noTokenId2) = _prepareCondition(question2);
 
         vm.prank(admin);
-        exchange.registerToken(yesTokenId2, noTokenId2, conditionId2);
+        exchange.registerToken(yesTokenId2, noTokenId2, conditionId2, question2);
 
         assertEq(exchange.getConditionId(yesTokenId2), conditionId2);
         assertEq(exchange.getComplement(yesTokenId2), noTokenId2);
     }
 
     function test_RegisterToken_RevertsForNonAdminNonOracle() public {
-        (bytes32 conditionId2, uint256 yesTokenId2, uint256 noTokenId2) =
-            _prepareCondition(keccak256("Will LINK reach $100 in 2026?"));
+        bytes32 question2 = keccak256("Will LINK reach $100 in 2026?");
+        (bytes32 conditionId2, uint256 yesTokenId2, uint256 noTokenId2) = _prepareCondition(question2);
 
         vm.prank(address(0xBEEF));
         vm.expectRevert(ProphetCTFExchange.NotAdminOrOracle.selector);
-        exchange.registerToken(yesTokenId2, noTokenId2, conditionId2);
+        exchange.registerToken(yesTokenId2, noTokenId2, conditionId2, question2);
     }
 
     function test_RegisterToken_RevertsOnTokenConditionMismatch() public {
-        (bytes32 conditionId2,,) = _prepareCondition(keccak256("Will DOGE reach $1 in 2026?"));
+        bytes32 question2 = keccak256("Will DOGE reach $1 in 2026?");
+        (bytes32 conditionId2,,) = _prepareCondition(question2);
 
         // Use unrelated token IDs that do not match the reconstructed CTF position IDs.
         vm.prank(oracleEoa);
         vm.expectRevert(ProphetCTFExchange.TokenConditionMismatch.selector);
-        exchange.registerToken(uint256(12345), uint256(67890), conditionId2);
+        exchange.registerToken(uint256(12345), uint256(67890), conditionId2, question2);
     }
 
     function test_RegisterToken_RevertsWhenConditionNotPrepared() public {
@@ -398,7 +407,7 @@ contract CTFExchangeTest is Test {
         // getConditionId / getCollectionId / getPositionId are pure math and return
         // values regardless of preparation — the new existence check must catch this.
         bytes32 fakeQuestion = keccak256("phantom condition");
-        bytes32 fakeConditionId = ctf.getConditionId(admin, fakeQuestion, 2);
+        bytes32 fakeConditionId = ctf.getConditionId(address(resolution), fakeQuestion, 2);
         bytes32 yesCollection = ctf.getCollectionId(bytes32(0), fakeConditionId, 1);
         bytes32 noCollection = ctf.getCollectionId(bytes32(0), fakeConditionId, 2);
         uint256 fakeYes = ctf.getPositionId(IERC20(address(usdc)), yesCollection);
@@ -406,7 +415,7 @@ contract CTFExchangeTest is Test {
 
         vm.prank(oracleEoa);
         vm.expectRevert(ProphetCTFExchange.ConditionNotPrepared.selector);
-        exchange.registerToken(fakeYes, fakeNo, fakeConditionId);
+        exchange.registerToken(fakeYes, fakeNo, fakeConditionId, fakeQuestion);
     }
 
     // ── setOracle ─────────────────────────────────────────────────
@@ -451,7 +460,7 @@ contract CTFExchangeTest is Test {
 
         // And the pair can be re-registered cleanly (e.g. after fixing a bad condition).
         vm.prank(oracleEoa);
-        exchange.registerToken(yesTokenId, noTokenId, conditionId);
+        exchange.registerToken(yesTokenId, noTokenId, conditionId, questionId);
         assertEq(exchange.getConditionId(yesTokenId), conditionId);
     }
 
@@ -496,7 +505,7 @@ contract CTFExchangeTest is Test {
 
     function test_ValidateTokenCondition_RejectsUnpreparedCondition() public {
         bytes32 unpreparedQuestion = keccak256("never prepared");
-        bytes32 unpreparedConditionId = ctf.getConditionId(admin, unpreparedQuestion, 2);
+        bytes32 unpreparedConditionId = ctf.getConditionId(address(resolution), unpreparedQuestion, 2);
 
         bytes32 yesCol = ctf.getCollectionId(bytes32(0), unpreparedConditionId, 1);
         bytes32 noCol = ctf.getCollectionId(bytes32(0), unpreparedConditionId, 2);
@@ -507,7 +516,7 @@ contract CTFExchangeTest is Test {
         // The getOutcomeSlotCount check must catch this.
         vm.prank(admin);
         vm.expectRevert(ProphetCTFExchange.ConditionNotPrepared.selector);
-        exchange.registerToken(yesId, noId, unpreparedConditionId);
+        exchange.registerToken(yesId, noId, unpreparedConditionId, unpreparedQuestion);
     }
 
     // ── M-10: constructor zero-address checks ────────────────────
@@ -530,24 +539,24 @@ contract CTFExchangeTest is Test {
     // ── M-06: registerToken blocked when paused ───────────────────
 
     function test_RegisterToken_RevertsWhenPaused() public {
-        (bytes32 conditionId2, uint256 yesTokenId2, uint256 noTokenId2) =
-            _prepareCondition(keccak256("Will ETH reach $20k in 2026?"));
+        bytes32 question2 = keccak256("Will ETH reach $20k in 2026?");
+        (bytes32 conditionId2, uint256 yesTokenId2, uint256 noTokenId2) = _prepareCondition(question2);
 
         vm.prank(admin);
         exchange.pauseTrading();
 
         vm.prank(oracleEoa);
         vm.expectRevert(IPausableEE.Paused.selector);
-        exchange.registerToken(yesTokenId2, noTokenId2, conditionId2);
+        exchange.registerToken(yesTokenId2, noTokenId2, conditionId2, question2);
 
         vm.prank(admin);
         vm.expectRevert(IPausableEE.Paused.selector);
-        exchange.registerToken(yesTokenId2, noTokenId2, conditionId2);
+        exchange.registerToken(yesTokenId2, noTokenId2, conditionId2, question2);
     }
 
     function test_RegisterToken_WorksAfterUnpause() public {
-        (bytes32 conditionId2, uint256 yesTokenId2, uint256 noTokenId2) =
-            _prepareCondition(keccak256("Will ETH reach $20k in 2026?"));
+        bytes32 question2 = keccak256("Will ETH reach $20k in 2026?");
+        (bytes32 conditionId2, uint256 yesTokenId2, uint256 noTokenId2) = _prepareCondition(question2);
 
         vm.startPrank(admin);
         exchange.pauseTrading();
@@ -555,7 +564,7 @@ contract CTFExchangeTest is Test {
         vm.stopPrank();
 
         vm.prank(oracleEoa);
-        exchange.registerToken(yesTokenId2, noTokenId2, conditionId2);
+        exchange.registerToken(yesTokenId2, noTokenId2, conditionId2, question2);
         assertEq(exchange.getConditionId(yesTokenId2), conditionId2);
     }
 
@@ -769,6 +778,54 @@ contract CTFExchangeTest is Test {
 
     // Event mirrored from ProphetCTFExchange for expectEmit matching.
     event FeesSwept(address indexed operator, uint256 indexed tokenId, uint256 amount);
+    event ResolutionUpdated(address indexed previousResolution, address indexed newResolution);
+
+    // ── setResolution ────────────────────────────────────────────
+
+    function test_SetResolution_AdminCanUpdate() public {
+        address newResolution = address(0xDE50);
+
+        vm.expectEmit(true, true, false, false, address(exchange));
+        emit ResolutionUpdated(address(resolution), newResolution);
+
+        vm.prank(admin);
+        exchange.setResolution(newResolution);
+
+        assertEq(exchange.resolution(), newResolution);
+    }
+
+    function test_SetResolution_RevertsForNonAdmin() public {
+        vm.prank(operator);
+        vm.expectRevert(IAuthEE.NotAdmin.selector);
+        exchange.setResolution(address(0xDE50));
+    }
+
+    function test_SetResolution_RevertsOnZeroAddress() public {
+        vm.prank(admin);
+        vm.expectRevert(IAuthEE.ZeroAddress.selector);
+        exchange.setResolution(address(0));
+    }
+
+    // ── registerToken oracle derivation check ──────────────────────
+
+    /// @notice Conditions prepared directly on the CTF (bypassing Resolution) must
+    ///         be rejected. Without this, an attacker could resolve markets without
+    ///         cooldown or admin oversight by using their own address as the CTF oracle.
+    function test_RegisterToken_RevertsWrongConditionOracle() public {
+        address attacker = address(0xBAD);
+        bytes32 question2 = keccak256("attacker-question");
+        ctf.prepareCondition(attacker, question2, 2);
+        bytes32 attackerConditionId = ctf.getConditionId(attacker, question2, 2);
+
+        bytes32 yesCol = ctf.getCollectionId(bytes32(0), attackerConditionId, 1);
+        bytes32 noCol = ctf.getCollectionId(bytes32(0), attackerConditionId, 2);
+        uint256 yesId = ctf.getPositionId(IERC20(address(usdc)), yesCol);
+        uint256 noId = ctf.getPositionId(IERC20(address(usdc)), noCol);
+
+        vm.prank(admin);
+        vm.expectRevert(ProphetCTFExchange.WrongConditionOracle.selector);
+        exchange.registerToken(yesId, noId, attackerConditionId, question2);
+    }
 
     // ── Helpers ───────────────────────────────────────────────────
 
@@ -807,14 +864,15 @@ contract CTFExchangeTest is Test {
         usdc.approve(address(exchange), type(uint256).max);
     }
 
-    /// @dev Prepares a fresh binary CTF condition and returns its conditionId plus the derived
-    ///      YES/NO position IDs. Uses `admin` as the CTF-level oracle for convenience.
+    /// @dev Prepares a fresh binary CTF condition via the Resolution wrapper and returns
+    ///      its conditionId plus the derived YES/NO position IDs.
     function _prepareCondition(bytes32 question)
         internal
         returns (bytes32 conditionId_, uint256 yesTokenId_, uint256 noTokenId_)
     {
-        ctf.prepareCondition(admin, question, 2);
-        conditionId_ = ctf.getConditionId(admin, question, 2);
+        vm.prank(oracleEoa);
+        resolution.prepareCondition(question);
+        conditionId_ = ctf.getConditionId(address(resolution), question, 2);
 
         bytes32 yesCollectionId = ctf.getCollectionId(bytes32(0), conditionId_, 1);
         bytes32 noCollectionId = ctf.getCollectionId(bytes32(0), conditionId_, 2);

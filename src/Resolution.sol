@@ -117,6 +117,14 @@ contract Resolution is Ownable2Step, Pausable {
 
     // ── Oracle functions ────────────────────────────────────────────
 
+    /// @notice Prepares a binary condition in the Gnosis CTF with this contract as the oracle.
+    /// @dev By wrapping CTF.prepareCondition, the CTF-level oracle is always address(this)
+    ///      by construction -- the oracle EOA cannot pass a different address.
+    /// @param questionId The question identifier for this market.
+    function prepareCondition(bytes32 questionId) external onlyOracle whenNotPaused {
+        ctf.prepareCondition(address(this), questionId, 2);
+    }
+
     /// @notice Submit a payout report. Enters pending state for the cooldown period.
     /// @param conditionId The condition identifier (from CTF prepareCondition).
     /// @param questionId The question identifier (needed for CTF forwarding on finalization).
@@ -168,7 +176,7 @@ contract Resolution is Ownable2Step, Pausable {
 
         emit PayoutsReported(conditionId, p.payouts, p.ipfsCid);
 
-        // Forward to CTF so users can redeem collateral (fixes H-02).
+        // Forward to CTF so users can redeem their outcome tokens for collateral.
         ctf.reportPayouts(p.questionId, p.payouts);
     }
 
