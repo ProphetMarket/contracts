@@ -684,6 +684,92 @@ contract CTFExchangeTest is Test {
         assertTrue(exchange.getOrderStatus(exchange.hashOrder(order)).isFilledOrCancelled);
     }
 
+    // ── sweepFees ─────────────────────────────────────────────────
+
+    /// @notice Operator with unequal YES/NO balances can sweep the minimum of the
+    ///         two back into collateral. The leftover (unpaired) tokens remain.
+    function test_SweepFees_MergesMinimumBalance() public {
+        // Give operator 50 YES + 30 NO (simulating fee accumulation)
+        _mintPositionTokens(operator, 50 * ONE_USDC);
+        // Mint another batch and only give YES to operator to create imbalance
+        _mintPositionTokens(address(this), 30 * ONE_USDC);
+        // Operator now has 50 YES from first mint. Give 30 NO from second.
+        ctf.safeTransferFrom(address(this), operator, noTokenId, 30 * ONE_USDC, "");
+
+        // Operator: 50 YES, 80 NO (50 from first mint + 30 transferred)
+        // Wait — let me recalculate. _mintPositionTokens gives `to` both YES+NO.
+        // So operator has 50 YES + 50 NO from first mint. Then we gave 30 NO more.
+        // Operator: 50 YES, 80 NO. Min = 50. Sweep should merge 50.
+        // Actually let's simplify: just give the operator known amounts directly.
+
+        // Reset: use a fresh address to avoid confusion
+        address sweeper = address(0xFEE);
+        vm.prank(admin);
+        exchange.addOperator(sweeper);
+
+        // Mint 100 of each, then distribute: 50 YES + 30 NO to sweeper
+        _mintPositionTokens(address(this), 100 * ONE_USDC);
+        ctf.safeTransferFrom(address(this), sweeper, yesTokenId, 50 * ONE_USDC, "");
+        ctf.safeTransferFrom(address(this), sweeper, noTokenId, 30 * ONE_USDC, "");
+
+        // Sweeper approves exchange for CTF tokens
+        vm.prank(sweeper);
+        ctf.setApprovalForAll(address(exchange), true);
+
+        uint256 usdcBefore = usdc.balanceOf(sweeper);
+
+        vm.prank(sweeper);
+        exchange.sweepFees(yesTokenId);
+
+        // Merged 30 (the minimum), returned 30 USDC collateral
+        assertEq(usdc.balanceOf(sweeper), usdcBefore + 30 * ONE_USDC);
+        // 20 YES remain (50 - 30), 0 NO remain
+        assertEq(ctf.balanceOf(sweeper, yesTokenId), 20 * ONE_USDC);
+        assertEq(ctf.balanceOf(sweeper, noTokenId), 0);
+    }
+
+    /// @notice sweepFees reverts when the operator has zero of either outcome token.
+    function test_SweepFees_RevertsWhenNothingToSweep() public {
+        // Operator has no position tokens for this market
+        address sweeper = address(0xFEE2);
+        vm.prank(admin);
+        exchange.addOperator(sweeper);
+
+        vm.prank(sweeper);
+        vm.expectRevert(ITradingEE.NothingToSweep.selector);
+        exchange.sweepFees(yesTokenId);
+    }
+
+    /// @notice Only operators can call sweepFees — non-operators are rejected.
+    function test_SweepFees_RevertsForNonOperator() public {
+        vm.prank(alice);
+        vm.expectRevert(IAuthEE.NotOperator.selector);
+        exchange.sweepFees(yesTokenId);
+    }
+
+    /// @notice sweepFees emits FeesSwept with the correct operator, tokenId, and amount.
+    function test_SweepFees_EmitsFeesSwept() public {
+        address sweeper = address(0xFEE3);
+        vm.prank(admin);
+        exchange.addOperator(sweeper);
+
+        _mintPositionTokens(address(this), 100 * ONE_USDC);
+        ctf.safeTransferFrom(address(this), sweeper, yesTokenId, 40 * ONE_USDC, "");
+        ctf.safeTransferFrom(address(this), sweeper, noTokenId, 40 * ONE_USDC, "");
+
+        vm.prank(sweeper);
+        ctf.setApprovalForAll(address(exchange), true);
+
+        vm.expectEmit(true, true, false, true, address(exchange));
+        emit FeesSwept(sweeper, yesTokenId, 40 * ONE_USDC);
+
+        vm.prank(sweeper);
+        exchange.sweepFees(yesTokenId);
+    }
+
+    // Event mirrored from ProphetCTFExchange for expectEmit matching.
+    event FeesSwept(address indexed operator, uint256 indexed tokenId, uint256 amount);
+
     // ── Helpers ───────────────────────────────────────────────────
 
     function _createOrder(

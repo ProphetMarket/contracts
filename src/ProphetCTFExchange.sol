@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {IERC20} from "openzeppelin-contracts/token/ERC20/IERC20.sol";
+import {IERC1155} from "openzeppelin-contracts/token/ERC1155/IERC1155.sol";
 
 import {Auth} from "exchange/mixins/Auth.sol";
 import {Fees} from "exchange/mixins/Fees.sol";
@@ -93,6 +94,33 @@ contract ProphetCTFExchange is
         uint256[] memory makerFillAmounts
     ) external nonReentrant onlyOperator notPaused {
         _matchOrders(takerOrder, makerOrders, takerFillAmount, makerFillAmounts);
+    }
+
+    // ── Fee Sweeping ──────────────────────────────────────────────
+
+    /// @notice Merges complementary YES+NO fee balances back into collateral.
+    /// @dev The operator accumulates fees in outcome tokens during order fills.
+    ///      This function converts equal amounts of YES+NO tokens into collateral
+    ///      by pulling both tokens into the exchange, merging via the CTF, and
+    ///      returning the resulting collateral to the operator.
+    /// @param tokenId Either outcome token of the pair whose fees to sweep
+    function sweepFees(uint256 tokenId) external nonReentrant onlyOperator {
+        uint256 complement = getComplement(tokenId);
+        bytes32 conditionId = getConditionId(tokenId);
+
+        address ctfAddr = getCtf();
+        uint256 balToken = IERC1155(ctfAddr).balanceOf(msg.sender, tokenId);
+        uint256 balComplement = IERC1155(ctfAddr).balanceOf(msg.sender, complement);
+
+        uint256 amount = balToken < balComplement ? balToken : balComplement;
+        if (amount == 0) revert NothingToSweep();
+
+        _transfer(msg.sender, address(this), tokenId, amount);
+        _transfer(msg.sender, address(this), complement, amount);
+        _merge(conditionId, amount);
+        _transfer(address(this), msg.sender, 0, amount);
+
+        emit FeesSwept(msg.sender, tokenId, amount);
     }
 
     // ── Configuration ─────────────────────────────────────────────
