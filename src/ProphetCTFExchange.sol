@@ -149,11 +149,27 @@ contract ProphetCTFExchange is
     // ── Configuration ─────────────────────────────────────────────
 
     function setProxyFactory(address _newProxyFactory) external onlyAdmin {
-        _setProxyFactory(_newProxyFactory);
+        _scheduleProxyFactory(_newProxyFactory);
+    }
+
+    function applyProxyFactory() external onlyAdmin {
+        _applyProxyFactory();
+    }
+
+    function cancelProxyFactory() external onlyAdmin {
+        _cancelProxyFactory();
     }
 
     function setSafeFactory(address _newSafeFactory) external onlyAdmin {
-        _setSafeFactory(_newSafeFactory);
+        _scheduleSafeFactory(_newSafeFactory);
+    }
+
+    function applySafeFactory() external onlyAdmin {
+        _applySafeFactory();
+    }
+
+    function cancelSafeFactory() external onlyAdmin {
+        _cancelSafeFactory();
     }
 
     /// @notice Update the oracle address authorized to call `registerToken`.

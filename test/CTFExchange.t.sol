@@ -8,6 +8,7 @@ import {IAuthEE} from "exchange/interfaces/IAuth.sol";
 import {ITradingEE} from "exchange/interfaces/ITrading.sol";
 import {IPausableEE} from "exchange/interfaces/IPausable.sol";
 import {IRegistryEE} from "exchange/interfaces/IRegistry.sol";
+import {PolyFactoryHelper} from "exchange/mixins/PolyFactoryHelper.sol";
 
 import {ProphetCTFExchange} from "../src/ProphetCTFExchange.sol";
 import {Resolution} from "../src/Resolution.sol";
@@ -844,6 +845,129 @@ contract CTFExchangeTest is Test {
         vm.prank(admin);
         vm.expectRevert(ProphetCTFExchange.WrongConditionOracle.selector);
         exchange.registerToken(yesId, noId, attackerConditionId, question2);
+    }
+
+    // ── Factory timelock ──────────────────────────────────────────
+
+    /// @notice setProxyFactory schedules a change with a 48-hour timelock
+    ///         instead of applying immediately, giving users time to cancel
+    ///         orders tied to the current factory.
+    function test_SetProxyFactory_SchedulesChange() public {
+        address newFactory = address(0xBEEF);
+        vm.prank(admin);
+        exchange.setProxyFactory(newFactory);
+
+        (address pending, uint256 effectiveAt) = exchange.pendingProxyFactory();
+        assertEq(pending, newFactory);
+        assertEq(effectiveAt, block.timestamp + exchange.FACTORY_TIMELOCK());
+    }
+
+    function test_SetProxyFactory_RevertsOnZeroAddress() public {
+        vm.prank(admin);
+        vm.expectRevert("zero address");
+        exchange.setProxyFactory(address(0));
+    }
+
+    function test_ApplyProxyFactory_WorksAfterTimelock() public {
+        address newFactory = address(0xBEEF);
+        vm.prank(admin);
+        exchange.setProxyFactory(newFactory);
+
+        vm.warp(block.timestamp + exchange.FACTORY_TIMELOCK());
+        vm.prank(admin);
+        exchange.applyProxyFactory();
+
+        assertEq(exchange.getProxyFactory(), newFactory);
+        (address pending,) = exchange.pendingProxyFactory();
+        assertEq(pending, address(0));
+    }
+
+    function test_ApplyProxyFactory_RevertsBeforeTimelock() public {
+        address newFactory = address(0xBEEF);
+        vm.prank(admin);
+        exchange.setProxyFactory(newFactory);
+
+        vm.warp(block.timestamp + exchange.FACTORY_TIMELOCK() - 1);
+        vm.prank(admin);
+        vm.expectRevert(PolyFactoryHelper.TimelockNotElapsed.selector);
+        exchange.applyProxyFactory();
+    }
+
+    function test_ApplyProxyFactory_RevertsWhenNothingScheduled() public {
+        vm.prank(admin);
+        vm.expectRevert(PolyFactoryHelper.NoFactoryChangeScheduled.selector);
+        exchange.applyProxyFactory();
+    }
+
+    function test_CancelProxyFactory_ClearsPending() public {
+        address newFactory = address(0xBEEF);
+        vm.prank(admin);
+        exchange.setProxyFactory(newFactory);
+
+        vm.prank(admin);
+        exchange.cancelProxyFactory();
+
+        (address pending,) = exchange.pendingProxyFactory();
+        assertEq(pending, address(0));
+    }
+
+    function test_SetSafeFactory_SchedulesChange() public {
+        address newFactory = address(0xCAFE);
+        vm.prank(admin);
+        exchange.setSafeFactory(newFactory);
+
+        (address pending, uint256 effectiveAt) = exchange.pendingSafeFactory();
+        assertEq(pending, newFactory);
+        assertEq(effectiveAt, block.timestamp + exchange.FACTORY_TIMELOCK());
+    }
+
+    function test_SetSafeFactory_RevertsOnZeroAddress() public {
+        vm.prank(admin);
+        vm.expectRevert("zero address");
+        exchange.setSafeFactory(address(0));
+    }
+
+    function test_ApplySafeFactory_WorksAfterTimelock() public {
+        address newFactory = address(0xCAFE);
+        vm.prank(admin);
+        exchange.setSafeFactory(newFactory);
+
+        vm.warp(block.timestamp + exchange.FACTORY_TIMELOCK());
+        vm.prank(admin);
+        exchange.applySafeFactory();
+
+        assertEq(exchange.getSafeFactory(), newFactory);
+        (address pending,) = exchange.pendingSafeFactory();
+        assertEq(pending, address(0));
+    }
+
+    function test_ApplySafeFactory_RevertsBeforeTimelock() public {
+        address newFactory = address(0xCAFE);
+        vm.prank(admin);
+        exchange.setSafeFactory(newFactory);
+
+        vm.warp(block.timestamp + exchange.FACTORY_TIMELOCK() - 1);
+        vm.prank(admin);
+        vm.expectRevert(PolyFactoryHelper.TimelockNotElapsed.selector);
+        exchange.applySafeFactory();
+    }
+
+    function test_ApplySafeFactory_RevertsWhenNothingScheduled() public {
+        vm.prank(admin);
+        vm.expectRevert(PolyFactoryHelper.NoFactoryChangeScheduled.selector);
+        exchange.applySafeFactory();
+    }
+
+    function test_CancelSafeFactory_ClearsPending() public {
+        address newFactory = address(0xCAFE);
+        vm.prank(admin);
+        exchange.setSafeFactory(newFactory);
+
+        vm.prank(admin);
+        exchange.cancelSafeFactory();
+
+        (address pending,) = exchange.pendingSafeFactory();
+        assertEq(pending, address(0));
     }
 
     // ── Helpers ───────────────────────────────────────────────────
