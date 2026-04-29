@@ -52,10 +52,15 @@ contract ProphetCTFExchange is
     error TokenConditionMismatch();
     error ConditionNotPrepared();
     error WrongConditionOracle();
+    error DuplicatedConditionId();
 
     event OracleUpdated(address indexed previousOracle, address indexed newOracle);
     event ResolutionUpdated(address indexed previousResolution, address indexed newResolution);
     event TokenUnregistered(uint256 indexed token0, uint256 indexed token1, bytes32 indexed conditionId);
+
+    /// @notice Conditions that have been unregistered. Prevents re-registration of the
+    ///         same condition, which would reactivate stale signed orders at outdated prices.
+    mapping(bytes32 conditionId => bool) public previousConditionIds;
 
     constructor(address _collateral, address _ctf, address _proxyFactory, address _safeFactory)
         Assets(_requireNonZero(_collateral), _requireNonZero(_ctf))
@@ -186,11 +191,13 @@ contract ProphetCTFExchange is
         _registerToken(token, complement, conditionId);
     }
 
-    /// @notice Admin-only escape hatch to clear a bad registration.
+    /// @notice Admin-only escape hatch to permanently remove a bad registration.
     /// @dev `_registerToken` is write-once in the upstream Registry mixin, so without
     ///      this there is no way to recover from an edge case (e.g. a condition that
     ///      was prepared incorrectly in the CTF itself). Both directions of the
-    ///      registry mapping are cleared so the pair can be re-registered.
+    ///      registry mapping are cleared. The conditionId is tombstoned in
+    ///      `previousConditionIds` to prevent re-registration, which would reactivate
+    ///      stale signed orders at outdated prices.
     ///      The caller must provide both token IDs. The complement is validated against
     ///      storage — if it doesn't match, the call reverts. This acts as a double-check:
     ///      the admin must prove they know the exact pair they're deleting.
@@ -198,6 +205,7 @@ contract ProphetCTFExchange is
         if (registry[token].complement == 0) revert InvalidTokenId();
         if (registry[token].complement != complement) revert InvalidComplement();
         bytes32 conditionId = registry[token].conditionId;
+        previousConditionIds[conditionId] = true;
         delete registry[token];
         delete registry[complement];
         emit TokenUnregistered(token, complement, conditionId);
@@ -214,6 +222,10 @@ contract ProphetCTFExchange is
         internal
         view
     {
+        // Reject conditions that were previously unregistered. Re-registering the same
+        // condition would reactivate stale signed orders at outdated prices.
+        if (previousConditionIds[conditionId]) revert DuplicatedConditionId();
+
         IConditionalTokens ctfContract = IConditionalTokens(ctf);
         IERC20 collateralToken = IERC20(collateral);
 

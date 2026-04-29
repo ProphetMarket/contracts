@@ -457,11 +457,6 @@ contract CTFExchangeTest is Test {
         // Both directions should now look unregistered.
         assertEq(exchange.getConditionId(yesTokenId), bytes32(0));
         assertEq(exchange.getConditionId(noTokenId), bytes32(0));
-
-        // And the pair can be re-registered cleanly (e.g. after fixing a bad condition).
-        vm.prank(oracleEoa);
-        exchange.registerToken(yesTokenId, noTokenId, conditionId, questionId);
-        assertEq(exchange.getConditionId(yesTokenId), conditionId);
     }
 
     function test_UnregisterToken_RevertsForNonAdmin() public {
@@ -499,6 +494,30 @@ contract CTFExchangeTest is Test {
 
         assertEq(exchange.getConditionId(yesTokenId), bytes32(0));
         assertEq(exchange.getConditionId(noTokenId), bytes32(0));
+    }
+
+    /// @notice Once a condition is unregistered, it must never be re-registered.
+    ///         Re-registration would reactivate stale signed orders at outdated prices,
+    ///         allowing someone to fill forgotten orders against unsuspecting signers.
+    function test_RegisterToken_RevertsDuplicatedConditionId() public {
+        // Unregister the condition set up in setUp
+        vm.prank(admin);
+        exchange.unregisterToken(yesTokenId, noTokenId);
+
+        // The condition is now tombstoned — attempting to re-register must revert
+        vm.prank(admin);
+        vm.expectRevert(ProphetCTFExchange.DuplicatedConditionId.selector);
+        exchange.registerToken(yesTokenId, noTokenId, conditionId, questionId);
+    }
+
+    /// @notice Verify that previousConditionIds is set after unregistration.
+    function test_UnregisterToken_SetsConditionAsPrevious() public {
+        assertFalse(exchange.previousConditionIds(conditionId));
+
+        vm.prank(admin);
+        exchange.unregisterToken(yesTokenId, noTokenId);
+
+        assertTrue(exchange.previousConditionIds(conditionId));
     }
 
     // ── L-04: NatSpec accuracy — unprepared conditions revert ────
