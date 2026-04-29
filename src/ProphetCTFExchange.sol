@@ -74,10 +74,19 @@ contract ProphetCTFExchange is
 
     // ── Trading ───────────────────────────────────────────────────
 
+    /// @notice Fills a single signed maker order.
+    /// @dev OPERATOR TRUST ASSUMPTION: Only operators can call this function. The operator
+    ///      has exclusive visibility of the off-chain order book and full discretion over
+    ///      which orders to fill, in what sequence, and against which counterparties.
+    ///      Users should be aware that the operator can selectively execute or withhold fills.
+    ///      This design is inherited from the Polymarket CTF Exchange architecture.
     function fillOrder(Order memory order, uint256 fillAmount) external nonReentrant onlyOperator notPaused {
         _fillOrder(order, fillAmount, msg.sender);
     }
 
+    /// @notice Fills multiple signed maker orders in a single transaction.
+    /// @dev OPERATOR TRUST ASSUMPTION: See fillOrder. All orders in a batch are selected
+    ///      and sequenced at the operator's sole discretion.
     function fillOrders(Order[] memory orders, uint256[] memory fillAmounts)
         external
         nonReentrant
@@ -87,6 +96,9 @@ contract ProphetCTFExchange is
         _fillOrders(orders, fillAmounts, msg.sender);
     }
 
+    /// @notice Matches a taker order against one or more maker orders.
+    /// @dev OPERATOR TRUST ASSUMPTION: See fillOrder. The operator selects which taker order
+    ///      is matched against which maker orders, and controls fill amounts for each pair.
     function matchOrders(
         Order memory takerOrder,
         Order[] memory makerOrders,
