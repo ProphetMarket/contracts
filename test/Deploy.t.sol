@@ -230,6 +230,46 @@ contract DeployTest is Test {
         assertEq(exchange.oracle(), oracleEoa);
     }
 
+    /// @notice Fresh deploy must rotate the Resolution oracle from the deployer
+    ///         (transient initial oracle from the constructor) to ORACLE_ADDRESS.
+    ///         Without this, server-driven `prepareCondition` / `reportPayouts`
+    ///         calls would revert with `Unauthorized()` and the AI resolution
+    ///         pipeline would require manual signatures from the deployer key.
+    function test_SetsResolutionOracle() public {
+        address oracleEoa = address(0x0BAD);
+
+        DeployConfig memory cfg = _emptyConfig();
+        cfg.oracleAddress = oracleEoa;
+
+        deployScript.run(deployer, cfg);
+
+        Resolution res = Resolution(deployScript.deployedResolution());
+        assertEq(res.oracle(), oracleEoa);
+    }
+
+    /// @notice Re-running the script against a pre-deployed Resolution whose
+    ///         oracle is still the deployer must rotate it to ORACLE_ADDRESS
+    ///         during the configure step. Covers the post-hoc remediation path
+    ///         for a Resolution that was deployed before the setOracle wiring
+    ///         landed in the script.
+    function test_SetsResolutionOracle_onPreDeployedResolution() public {
+        address oracleEoa = address(0x0BAD);
+
+        MockConditionalTokens preCtf = new MockConditionalTokens();
+        Resolution preRes = new Resolution(deployer, deployer, address(preCtf), 12 hours);
+
+        assertEq(preRes.oracle(), deployer);
+
+        DeployConfig memory cfg = _emptyConfig();
+        cfg.deployedCtf = address(preCtf);
+        cfg.deployedResolution = address(preRes);
+        cfg.oracleAddress = oracleEoa;
+
+        deployScript.run(deployer, cfg);
+
+        assertEq(preRes.oracle(), oracleEoa);
+    }
+
     /// @notice ORACLE_ADDRESS is a required prerequisite of the deploy script. Running
     ///         with oracleAddress unset must abort up front, not produce an exchange
     ///         with an empty oracle slot.

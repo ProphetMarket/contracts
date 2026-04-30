@@ -144,6 +144,7 @@ contract Deploy is Script {
         address resolution = _deployResolution(deployer, ctf, cfg.deployedResolution, cfg.cooldownPeriod);
         address exchange = _deployExchange(usdc, ctf, cfg.safeFactoryAddress, cfg.deployedExchange);
 
+        _configureResolution(resolution, cfg.oracleAddress);
         _configureExchange(exchange, resolution, cfg.operatorAddress, cfg.adminAddress, cfg.oracleAddress);
 
         // Persist addresses so they're readable by callers / tests.
@@ -196,8 +197,9 @@ contract Deploy is Script {
             return existing;
         }
 
-        // Deployer serves as both owner and initial oracle.
-        // Oracle role can be transferred later via setOracle().
+        // Deployer is the initial owner and a transient initial oracle.
+        // _configureResolution rotates the oracle to cfg.oracleAddress in the
+        // same broadcast so the contract is ready for automated server use.
         Resolution res = new Resolution(owner, owner, ctfAddr, cooldownSecs);
         console.log("[DEPLOYED] Resolution at", address(res));
         return address(res);
@@ -249,6 +251,19 @@ contract Deploy is Script {
     }
 
     // ── Post-deployment configuration ───────────────────────────────
+
+    /// @dev Rotates the Resolution oracle to the production EOA. Without this,
+    ///      Resolution.oracle stays as the deployer and every server-driven
+    ///      `prepareCondition` and `reportPayouts` call would revert with
+    ///      `Unauthorized()`. The oracle EOA must match the Exchange oracle —
+    ///      see contract-deployment-{mainnet,testnet}.md for the role contract.
+    function _configureResolution(address resolution, address oracleAddr) internal {
+        Resolution res = Resolution(resolution);
+        if (res.oracle() != oracleAddr) {
+            res.setOracle(oracleAddr);
+            console.log("[CONFIG] Set Resolution oracle:", oracleAddr);
+        }
+    }
 
     function _configureExchange(
         address exchange,
