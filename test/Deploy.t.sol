@@ -24,16 +24,19 @@ contract DeployTest is Test {
         safeFactory = new MockPolySafeFactory(MOCK_SINGLETON);
     }
 
-    /// @dev Returns a config for fresh deploy with MockPolySafeFactory (no extra roles).
+    /// @dev Returns a config for fresh deploy with MockPolySafeFactory. The oracle and
+    ///      operator default to the deployer because ORACLE_ADDRESS and OPERATOR_ADDRESS
+    ///      are required prerequisites of the deploy script — tests that need different
+    ///      values override the relevant field locally.
     function _emptyConfig() internal view returns (DeployConfig memory) {
         return DeployConfig({
             deployedUsdc: address(0),
             deployedCtf: address(0),
             deployedResolution: address(0),
             deployedExchange: address(0),
-            operatorAddress: address(0),
+            operatorAddress: deployer,
             adminAddress: address(0),
-            oracleAddress: address(0),
+            oracleAddress: deployer,
             safeFactoryAddress: address(safeFactory),
             cooldownPeriod: 12 hours
         });
@@ -159,9 +162,9 @@ contract DeployTest is Test {
             deployedCtf: address(ctf),
             deployedResolution: address(res),
             deployedExchange: address(exchange),
-            operatorAddress: address(0),
+            operatorAddress: deployer,
             adminAddress: address(0),
-            oracleAddress: address(0),
+            oracleAddress: deployer,
             safeFactoryAddress: address(safeFactory),
             cooldownPeriod: 12 hours
         });
@@ -225,6 +228,95 @@ contract DeployTest is Test {
 
         ProphetCTFExchange exchange = ProphetCTFExchange(deployScript.deployedExchange());
         assertEq(exchange.oracle(), oracleEoa);
+    }
+
+    /// @notice ORACLE_ADDRESS is a required prerequisite of the deploy script. Running
+    ///         with oracleAddress unset must abort up front, not produce an exchange
+    ///         with an empty oracle slot.
+    function test_RevertsWhenOracleAddressUnset() public {
+        DeployConfig memory cfg = _emptyConfig();
+        cfg.oracleAddress = address(0);
+
+        vm.expectRevert(bytes("DeployConfig.oracleAddress required"));
+        deployScript.run(deployer, cfg);
+    }
+
+    /// @notice OPERATOR_ADDRESS is a required prerequisite. Production deploys must
+    ///         install a separate operator key alongside the deployer; the script
+    ///         aborts up front if the env var is unset.
+    function test_RevertsWhenOperatorAddressUnset() public {
+        DeployConfig memory cfg = _emptyConfig();
+        cfg.operatorAddress = address(0);
+
+        vm.expectRevert(bytes("DeployConfig.operatorAddress required"));
+        deployScript.run(deployer, cfg);
+    }
+
+    /// @notice SAFE_FACTORY_ADDRESS is required when the script will deploy a fresh
+    ///         exchange. The check is hoisted to the top of _deploy so the script
+    ///         aborts before deploying USDC / CTF / Resolution.
+    function test_RevertsWhenSafeFactoryUnsetForFreshDeploy() public {
+        DeployConfig memory cfg = _emptyConfig();
+        cfg.safeFactoryAddress = address(0);
+
+        vm.expectRevert(bytes("DeployConfig.safeFactoryAddress required"));
+        deployScript.run(deployer, cfg);
+    }
+
+    /// @notice Re-runs against an already-deployed exchange must not require
+    ///         safeFactoryAddress — the existing exchange already has it baked in.
+    function test_AllowsUnsetSafeFactoryWhenExchangeAlreadyDeployed() public {
+        vm.startPrank(deployer);
+        TestUSDC usdc = new TestUSDC(deployer);
+        MockConditionalTokens ctf = new MockConditionalTokens();
+        ProphetCTFExchange preExchange =
+            new ProphetCTFExchange(address(usdc), address(ctf), address(0), address(safeFactory));
+        vm.stopPrank();
+
+        DeployConfig memory cfg = _emptyConfig();
+        cfg.deployedUsdc = address(usdc);
+        cfg.deployedCtf = address(ctf);
+        cfg.deployedExchange = address(preExchange);
+        cfg.safeFactoryAddress = address(0);
+
+        deployScript.run(deployer, cfg);
+
+        assertEq(deployScript.deployedExchange(), address(preExchange));
+    }
+
+    /// @notice Fresh deploy must wire the exchange to the freshly-deployed Resolution.
+    ///         Without this, the on-chain CTF-oracle binding in _validateTokenCondition
+    ///         can never succeed because resolution() stays at address(0).
+    function test_SetsExchangeResolution() public {
+        deployScript.run(deployer, _emptyConfig());
+
+        ProphetCTFExchange exchange = ProphetCTFExchange(deployScript.deployedExchange());
+        assertEq(exchange.resolution(), deployScript.deployedResolution());
+        assertTrue(exchange.resolution() != address(0));
+    }
+
+    /// @notice Re-running the script against a pre-deployed exchange whose resolution()
+    ///         is still zero must wire it during the configure step. This covers the
+    ///         post-hoc remediation case for an exchange that was deployed before the
+    ///         setResolution wiring landed in the script.
+    function test_SetsExchangeResolution_onPreDeployedExchange() public {
+        vm.startPrank(deployer);
+        TestUSDC usdc = new TestUSDC(deployer);
+        MockConditionalTokens ctf = new MockConditionalTokens();
+        ProphetCTFExchange preExchange =
+            new ProphetCTFExchange(address(usdc), address(ctf), address(0), address(safeFactory));
+        vm.stopPrank();
+
+        assertEq(preExchange.resolution(), address(0));
+
+        DeployConfig memory cfg = _emptyConfig();
+        cfg.deployedUsdc = address(usdc);
+        cfg.deployedCtf = address(ctf);
+        cfg.deployedExchange = address(preExchange);
+
+        deployScript.run(deployer, cfg);
+
+        assertEq(preExchange.resolution(), deployScript.deployedResolution());
     }
 
     // ── Safe address derivation ──────────────────────────────────────

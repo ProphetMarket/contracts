@@ -19,11 +19,15 @@ interface IPolySafeProxyFactory {
 /// @param deployedCtf         Pre-deployed ConditionalTokens (address(0) = deploy fresh)
 /// @param deployedResolution  Pre-deployed Resolution (address(0) = deploy fresh)
 /// @param deployedExchange    Pre-deployed ProphetCTFExchange (address(0) = deploy fresh)
-/// @param operatorAddress     Register as operator on exchange (address(0) = skip)
-/// @param adminAddress        Register as admin on exchange (address(0) = skip)
-/// @param oracleAddress       Set as the exchange oracle (address(0) = skip).
-///                            The oracle is authorized to call `registerToken` and should
-///                            match the oracle configured on Resolution.sol.
+/// @param operatorAddress     Register as a separate operator on the exchange. **Required** —
+///                            the script reverts if address(0). The deployer is also an
+///                            operator via the Auth constructor; this installs an additional
+///                            production operator key.
+/// @param adminAddress        Register as admin on exchange (address(0) = skip; deployer
+///                            remains the sole admin in that case).
+/// @param oracleAddress       Set as the exchange oracle. **Required** — the script reverts
+///                            if address(0). The oracle is authorized to call `registerToken`
+///                            and should match the oracle configured on Resolution.sol.
 /// @param safeFactoryAddress  Poly SafeProxyFactory address (required for fresh exchange deploy).
 ///                            Passed as _safeFactory (4th constructor arg) for POLY_GNOSIS_SAFE signature validation.
 ///                            The exchange reads the singleton via safeFactory.masterCopy().
@@ -56,12 +60,12 @@ struct DeployConfig {
 ///
 ///      Required env vars:
 ///        SAFE_FACTORY_ADDRESS   — Poly SafeProxyFactory (deploy via contracts-poly-safe/)
+///        ORACLE_ADDRESS         — exchange oracle EOA (authorized to call registerToken).
+///                                 Should match the oracle configured on Resolution.sol.
+///        OPERATOR_ADDRESS       — exchange operator EOA (separate from the deployer).
 ///
 ///      Optional env vars:
-///        OPERATOR_ADDRESS    — register a separate operator on the exchange
-///        ADMIN_ADDRESS       — transfer exchange admin to this address (deployer remains admin too)
-///        ORACLE_ADDRESS      — set as the exchange oracle (authorized to call registerToken).
-///                              Should match the oracle configured on Resolution.sol.
+///        ADMIN_ADDRESS       — register an additional admin on the exchange (deployer remains admin too)
 ///        DEPLOYED_USDC       — skip TestUSDC deployment
 ///        DEPLOYED_CTF        — skip MockConditionalTokens deployment
 ///        DEPLOYED_RESOLUTION — skip Resolution deployment
@@ -121,6 +125,15 @@ contract Deploy is Script {
     }
 
     function _deploy(address deployer, DeployConfig memory cfg) internal {
+        // Required inputs are validated up front so the script aborts before any
+        // deployment work. safeFactory is only needed when actually deploying a fresh
+        // exchange — re-runs against an already-deployed exchange skip that requirement.
+        require(cfg.oracleAddress != address(0), "DeployConfig.oracleAddress required");
+        require(cfg.operatorAddress != address(0), "DeployConfig.operatorAddress required");
+        if (!_isDeployed(cfg.deployedExchange)) {
+            require(cfg.safeFactoryAddress != address(0), "DeployConfig.safeFactoryAddress required");
+        }
+
         console.log("=== Prophet Contract Deployment ===");
         console.log("Deployer:", deployer);
         console.log("Chain ID:", block.chainid);
@@ -131,7 +144,7 @@ contract Deploy is Script {
         address resolution = _deployResolution(deployer, ctf, cfg.deployedResolution, cfg.cooldownPeriod);
         address exchange = _deployExchange(usdc, ctf, cfg.safeFactoryAddress, cfg.deployedExchange);
 
-        _configureExchange(exchange, cfg.operatorAddress, cfg.adminAddress, cfg.oracleAddress);
+        _configureExchange(exchange, resolution, cfg.operatorAddress, cfg.adminAddress, cfg.oracleAddress);
 
         // Persist addresses so they're readable by callers / tests.
         deployedUsdc = usdc;
@@ -196,8 +209,6 @@ contract Deploy is Script {
             return existing;
         }
 
-        require(safeFactory != address(0), "DeployConfig.safeFactoryAddress required");
-
         // _proxyFactory (3rd arg): address(0) — POLY_PROXY sig type is unused.
         // _safeFactory (4th arg): Poly SafeProxyFactory — used for POLY_GNOSIS_SAFE sig type.
         ProphetCTFExchange exchange = new ProphetCTFExchange(usdc, ctf, address(0), safeFactory);
@@ -236,12 +247,21 @@ contract Deploy is Script {
 
     // ── Post-deployment configuration ───────────────────────────────
 
-    function _configureExchange(address exchange, address operatorAddr, address adminAddr, address oracleAddr)
-        internal
-    {
+    function _configureExchange(
+        address exchange,
+        address resolution,
+        address operatorAddr,
+        address adminAddr,
+        address oracleAddr
+    ) internal {
         ProphetCTFExchange ex = ProphetCTFExchange(exchange);
 
-        if (operatorAddr != address(0) && !ex.isOperator(operatorAddr)) {
+        if (ex.resolution() != resolution) {
+            ex.setResolution(resolution);
+            console.log("[CONFIG] Set resolution:", resolution);
+        }
+
+        if (!ex.isOperator(operatorAddr)) {
             ex.addOperator(operatorAddr);
             console.log("[CONFIG] Added operator:", operatorAddr);
         }
@@ -251,7 +271,7 @@ contract Deploy is Script {
             console.log("[CONFIG] Added admin:", adminAddr);
         }
 
-        if (oracleAddr != address(0) && ex.oracle() != oracleAddr) {
+        if (ex.oracle() != oracleAddr) {
             ex.setOracle(oracleAddr);
             console.log("[CONFIG] Set oracle:", oracleAddr);
         }
