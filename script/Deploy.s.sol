@@ -154,10 +154,13 @@ contract Deploy is Script {
 
         console.log("");
         console.log("=== Deployment Summary ===");
-        console.log("USDC:       ", usdc);
-        console.log("CTF:        ", ctf);
-        console.log("Resolution: ", resolution);
-        console.log("Exchange:   ", exchange);
+        console.log("");
+        console.log("Copy-paste these into your shell:");
+        console.log("");
+        console.log(string.concat("  export USDC_ADDRESS=", vm.toString(usdc)));
+        console.log(string.concat("  export CTF_ADDRESS=", vm.toString(ctf)));
+        console.log(string.concat("  export RESOLUTION_ADDRESS=", vm.toString(resolution)));
+        console.log(string.concat("  export EXCHANGE_ADDRESS=", vm.toString(exchange)));
     }
 
     // ── Individual deployers ────────────────────────────────────────
