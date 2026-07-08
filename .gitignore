@@ -2,10 +2,17 @@
 cache/
 out/
 
-# Ignores development broadcast logs
+# Ignores development broadcast logs.
+# We keep /broadcast tracked (so committed audit trails on prod deploys survive)
+# but ignore all ephemeral output: Anvil chains (31337 default, 80002 Amoy for
+# local CI), dry-runs, and the numbered `run-<timestamp>.json` history files
+# that pile up on every broadcast (Foundry always keeps `run-latest.json` as a
+# pointer to the newest).
 !/broadcast
 /broadcast/*/31337/
+/broadcast/*/80002/
 /broadcast/**/dry-run/
+/broadcast/*/*/run-[0-9]*.json
 
 # Docs
 docs/
